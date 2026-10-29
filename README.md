@@ -7,7 +7,7 @@ The location will be the Pacific Salmon Commission Office 600-1155 Robson St, Va
 
 To prepare for the workshop:
 
- - Complete module0 pre-workshop assignment
+ - Complete module_0 pre-workshop assignment
  - Install RTMB
  - Download the materials provided in this repository
 
