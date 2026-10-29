@@ -9,7 +9,7 @@ To prepare for the workshop:
 
  - Complete module_0 pre-workshop assignment
  - Install RTMB
- - Download the materials provided in this repository
+ - Download the materials provided in this repository (the day before the course as it will be updated before then)
 
 All materials for the workshop will be in this GitHub repository. If you're familiar with Git/GitHub, you already know how to get all the materials on your computer. 
 If you're not, go [here](https://github.com/Pacific-salmon-assess/RTMBWorkshop_Nov2026/), click the (green) "Code" button, and choose the "Download ZIP" option.
