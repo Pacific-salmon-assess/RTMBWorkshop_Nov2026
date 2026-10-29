@@ -1,0 +1,191 @@
+---
+title: "RTMB Course"
+author: "Paul van Dam-Bates"
+format:
+  revealjs:
+    theme: simple
+    css: custom.scss
+    slide-number: true
+    show-slide-number: all
+    progress: true
+    width: 1280
+    height: 720
+    embed-resources: true
+    code-line-numbers: true
+    highlight-style: github
+    scrollable: true
+---
+
+
+## Introductions
+
+- PhD Statistics University of St Andrews (Scotland)
+- NIMBLE Development Team [here](https://r-nimble.org/)
+- Work on computational statistics (e.g. approximate posterior distributions, MCMC methods, efficient matrix exponentiation)
+- R packages `nimbleQuad` and `spbal`
+
+## Why RTMB
+
+- R wrapper for TMB
+- Convert R code to C++ for speed
+- Automatic Differentiation
+- Integrate out random effects (e.g. Laplace)
+- Code can run in basic R for checking
+
+## Course Structure
+
+- Can't code if you don't understand model
+- Focus on understanding a model, then coding it in RTMB
+- Will focus on understanding in the mornings and practical coding in the afternoon
+
+## Learning Outcomes
+
+- Understand how to fit a custom likelihood and report on it
+- Basic programming in RTMB
+- Fitting a random effects model
+- Useful RTMB tricks
+
+## Outline Day 1
+
+1. (9:00 – 9:50) Welcome and course introduction, introduction to maximum likelihood estimation, and assignment review.
+2. (10:00 - 10:50) Writing and fitting a stock recruit likelihood in R. Improve that likelihood with RTMB and compare. Compare with standard R packages. 
+3. (11:00 – 11:50) Introduction to RTMB and automatic differentiation (AD). Compare AD with finite differencing. What is a gradient and a Hessian. 
+4. (13:00 – 13:50) Add random effects to your likelihood. Laplace and RTMB 
+5. (14:00 – 14:50) Practice writing likelihoods with random effects and fit them. Hierarchical stock recruitment models.  Compare output with `glmmTMB`.
+6. (15:00 – 16:30) Additional random effect structures (e.g. time varying productivity). 
+
+## Outline Day 2
+
+1. (9:00 – 9:50) Variance estimation for maximum likelihood. Delta method to approximate parameters. Using RTMB to report variance and confidence intervals. 
+2. (10:00 – 10:50) RTMB functionality. Learn little details about how to use RTMB effectively. 
+3. (11:00 – 11:50) Writing helper functions and atomics (e.g. Lambert W). Best coding practices. 
+4. (13:00 – 16:30) Practice writing complex likelihood functions in RTMB 
+
+## PDF
+
+- Random variable $x$
+- Probability mass function $p(x)$ if $x$ is discrete
+
+```{r}
+x <- 0:20
+px <- dbinom(x, size = 20, prob = 0.25)
+plot(x, px, ylab = "p(x)", xlab = "x", col = "black", lwd = 3, type = "h")
+```
+
+- Probability density function $f(x)$ if $x$ is continuous.
+- $f(x)$ describes a density, not a probability of an event.
+- Probability defined by some area under the curve, e.g.
+$$
+  p(x \leq 1)= \int_{-\infty}^1 f(x)dx
+$$
+
+```{r}
+x <- seq(-5, 5, by = 0.01)
+fx <- dnorm(x, 0, 1)
+plot(x, fx, ylab = "f(x)", xlab = "x", type = "l")
+polygon(c(x[x <= 1], 1, 0), c(fx[x <= 1], 0, 0), col="blue", border=NA)
+```
+
+## Expectation
+
+- Expected value of $x$ (or mean) when discrete
+$$
+  \mathbb{E}(x) = \sum xp(x)
+$$
+```{r, echo = TRUE}
+  mean(rbinom(10000, size = 10, prob = 0.25))
+  sum((0:10)*dbinom(0:10, size = 10, prob = 0.25))
+```
+
+- Expected value of $x$ (or mean) when continuous
+$$
+  \mathbb{E}(x) = \int xf(x)dx
+$$
+```{r, echo = TRUE}
+  mean(rgamma(10000, 1, 2))
+  integrate(\(x){x*dgamma(x,1,2)}, lower=0, upper=Inf)$value
+```
+
+- Sample mean
+$$
+  \mathbb{E}(x) = \frac{\sum x_i}{n}
+$$
+
+## Variance
+
+- Definition of variance is difference of squared expectation and expectation squared.
+$$
+  Var(x) = \mathbb{E}(x^2) - \mathbb{E}(x)^2.
+$$
+
+```{r, echo = TRUE}
+  var(rgamma(10000, 1, 2))
+  integrate(\(x){x^2*dgamma(x,1,2)}, lower=0, upper=Inf)$value - (1/2)^2
+```
+
+- Sample variance
+$$
+  Var(x) = \frac{(\sum x_i - \bar{x})^2}{n-1}
+$$
+
+## Joint Density
+
+- Some sample $\textbf{x}$, of size $n$
+- Assume $x_i \sim N(\mu, \sigma)$
+- If we assume all are independent, then the joint density is
+$$
+  f(\textbf{x}) = f(x_1, \ldots, f_n) = f(x_1)f(x_2) \cdots f(x_n) = \prod_{i=1}^n f(x_i)
+$$
+
+## Likelihood
+
+- For some parameters $\mathbf{\theta} = \{\mu, \sigma\}$
+- Likelihood is the data joint density expressed in terms of the parameters, conditional on the data.
+- $L(\mathbf{\theta} | \textbf{x}) = \prod_{i=1}^n f(x_i)$
+- Maximum likelihood estimation -- Find maximum values of parameters given the data.
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "100%"
+
+x <- rnorm(100, 0.25, 2)
+ll <- function(mu_vector) {
+  sapply(mu_vector, function(m) {
+    sum(dnorm(x, mean = m, sd = 2, log = TRUE))
+  })
+}
+mu <- seq(-5, 5, 0.1)
+
+plot(mu, ll(mu), xlab = "mu", ylab = "ll", main = "Log-Likelihood", type = "l")
+
+plot(mu, -ll(mu), xlab = "mu", ylab = "nll", main = "Negative Log-Likelihood", type = "l")
+```
+
+## Optimization in R
+
+- Gradient is the slope (derivative) in terms of the parameters
+- Gradient based methods optimization uses slope to find max/min
+- Random start, evaluate objective function, use gradient to move to new value
+- Run until at maximum/minimum (where gradient is zero)
+- Examples are `optim` or `nlminb`
+- If gradient not provided, then finite differences are used.
+
+```{r, echo = TRUE}
+set.seed(24)
+x <- rnorm(100, 0.25, 2)
+nll <- \(pars){
+  mu <- pars[1]
+  sigma <- exp(pars[2])
+  -sum(dnorm(x, mu, sigma, log = TRUE))
+}
+
+optim(c(0,0), nll)
+# nlminb(c(0,0), nll)
+```
+
+## Optimization in R
+
+- What about more than one peak?
+- Write a mixture model here with label switching...

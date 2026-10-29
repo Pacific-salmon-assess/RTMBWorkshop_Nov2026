@@ -1,0 +1,17 @@
+/* custom.scss */
+@import url('https://googleapis.com');
+
+$font-family-sans-serif: 'Inter', sans-serif;
+$presentation-heading-font: 'Inter', sans-serif;
+$presentation-slide-text-font-size: 28px;
+$link-color: #2b5c8f;
+
+.reveal h1, .reveal h2, .reveal h3 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.section-slide {
+  background-color: #f8f9fa;
+  text-align: center;
+}
