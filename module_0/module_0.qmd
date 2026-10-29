@@ -1,0 +1,145 @@
+---
+title: "Pre-workshop Material"
+author: "Paul van Dam-Bates"
+format: 
+  html:
+    self-contained: true
+---
+
+## Introduction
+
+Welcome to the Pacific Salmon Commission RTMB course *RTMB (Template Model Builder in R) and Maximum Likelihood Estimation in R*. You are expected have strong R coding skills and be able to turn a likelihood equation into code to find the maximum likelihood estimator (MLE). In this pre-workshop module, we will make sure that you are comfortable doing this while also setting you up with code that you are familiar that will be used as we develop RTMB skills.
+
+## Data
+
+We will start with some sockeye stock recruit data from the Fraser River. There are a total of 19 stocks, values are in millions of fish, and note that these are not necessarily official numbers and may be updated after 2020. Let's load the data, which may have a different path depending on how you have configured your R console, or Rstudio.
+
+```{r, warning = FALSE, eval = FALSE}
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox |> merge(stock, by = "PopID")
+
+library(ggplot2)
+ggplot(data = sox, aes(x = log(eff), y = log(rec), colour = PopNmL)) + 
+  geom_point() + 
+  theme_bw() + 
+  xlab("Log Spawners") + 
+  ylab("Log Recruits")
+```
+
+## Model 
+
+A Ricker stock recruit model relates the number of successfully returning fish (recruits) to the number of spawners, accounting for productivity and mortality in the term $\alpha$ and carrying capacity in $\beta$. Female spawners, $S_{kt}$, in brood year $t$ and from stock $k$, produce $R_{kt}$ recruits. Recruits are estimated based on escapement, fishery removals, and en-route losses, combined over multiple return years, or age classes. For simplicity we will assume that each year and stock may have variable productivity and/or carrying capacity. 
+
+$$
+  R_{kt} = S_{kt} \exp(\alpha_{kt} -\beta_k S_{k,t}),
+$$
+where $\alpha_{kt}$ is log productivity and $\beta_k$ is carrying capacity. This is usually written as the log recruits per spawners, with uncertainty added as white noise with standard deviation $\sigma$, $\epsilon_{k,t} \sim N(0,\sigma^2)$,
+
+$$
+  \log(R_{kt}/S_{kt}) =\alpha_{kt} - \beta_k S_{k,t} + \epsilon_{k,t}.
+$$
+
+## Fitting the Model
+
+As we see from the log Ricker model, it looks a lot like a linear model. We define a design matrix $X$, that relates each observation, $i \in \{1,\ldots,n\}$. If we combine the terms $\mathbf{\alpha}$ and $\mathbf{\beta}$ as a set of linear predictors, then we can rewrite the linear model as
+
+$$
+  \log(R_{i}/S_{i}) = X_i \cdot \mathbf{\beta} + \epsilon_{i}.
+$$
+If all terms are shared, then  $X_{i1}=1$ and $X_{i2} = S_i$. However, to allow for a different curve per stock we may write `X = model.matrix( ~ 0 + PopNmL + eff:PopNmL, data = sox)`. The likelihood of this equation for $n$ observations, and parameters $\mathbf{\theta} = \{\mathbf{\beta}, \sigma\}$, is
+
+$$
+  L(\mathbf{\theta}|R,S) = \prod_{i=1}^n N(\log(R_i/S_i), X_i \cdot \mathbf{\beta}, \sigma^2),
+$$
+where $N()$ is the normal distribution.
+
+The likelihood is just the joint probability density of the data, but termed as the likelihood of the parameters given the data, which is what we maximize to find the MLE. Note that for two random variables, $x_1$ and $x_2$, the joint probability density $f(\cdot)$ if they are independent is
+
+$$
+  f(x_1, x_2) = f(x_1) f(x_2).
+$$
+We rely on this fact to define the above likelihood as the product of the probability density of each individual observation. We can fit the model using the `lm` function in R as follows.
+
+```{r, eval = FALSE}
+sox <- sox |> within(logRS <- log(rec/eff))
+fit <- lm(logRS ~ 0 + PopNmL + eff:PopNmL, data = sox)
+# summary(fit)
+```
+
+## Custom Likelihood Function
+
+To write our own version of `lm` to fit this model we need to know a few things. 
+
+1. Computation must occur on the log scale. This is because multiplying lots of small probabilities together creates a very small number, which leads to numerical underflow. On the log scale, multiplication becomes summation, and small positive numbers become large negative numbers.
+$$
+  \log(AB) = \log(A) + \log(B)
+$$
+1. Numerical optimization functions typically find the minimum. If we work with the negative log likelihood then the minimum is actually the maximum.
+1. The optimizer will expect a single input of the parameters as a vector.
+1. The coefficient terms can be any number but the standard deviation $\sigma$ is strictly positive. This requires a transformation, typically fitting the parameter on the $log$ scale, or $\theta = \log(\sigma)$, to ensure that it is estimated correctly.
+
+To help you get started writing your own custom likelihood, I will demonstrate a very basic example of finding the mean of some normally distributed data. Consider a sample of $n=50$ taken from a normally distributed population,
+$$
+x_i \sim N(\mu, \sigma^2).
+$$
+We will find the MLE of the mean and standard deviation writing a custom function that returns the negative log likelihood of the 50 observations.
+
+```{r, eval = FALSE}
+set.seed(1)
+n <- 50
+x <- rnorm(n)
+
+fit0_lm <- lm(x~1)
+
+negll <- function(pars, data){
+  mu <- pars[1]
+  sigma <- exp(pars[2])
+  -sum(dnorm(data, mu, sigma, log = TRUE))
+}
+
+pars_init <- c(0,0)
+fit0 <- nlminb(pars_init, negll, data = x)
+```
+The function `nlmbin` searches the function to find the minimum, but other optimizers are also fine (e.g. `optim`). If we compare our estimates with `lm` we find that $\mu$ is the same but $\sigma$ is different. This is because the MLE of the variance term is actually biased and is generally corrected for bias in the `lm` function. To match them we must do bias correction of $n/(n-1)$.
+
+```{r, eval = FALSE}
+fit0$par[1] - mean(x) ## Should be the same...
+fit0$par[1] - coef(fit0_lm)
+exp(fit0$par[2]) - sd(x) ## Different!!
+exp(fit0$par[2]) - sigma(fit0_lm)
+exp(fit0$par[2])*sqrt(n/(n-1)) - sigma(fit0_lm) ## Same
+```
+
+We will discuss a lot of these concepts within the course. But for those who want to take this further, we will now estimate the uncertainty of the parameter. To do this, we can use the inverse of the hessian of the negative log likelihood. This sounds super complicated but the Hessian is the matrix of second derivatives, and describes the curvature around the MLE and thus variance, or at least in a very hand wavy way. This gets more complicated for parameter transformations and will be discussed in detail in the course.
+
+```{r, eval = FALSE}
+H <- numDeriv::hessian(negll, fit0$par, data = dat)
+V <- solve(H)
+## 95% CI for mu: Note that the test statistic is t, not z.
+## We know the exact distribution of the parameter, so don't approximate it
+## using a normal (i.e. 1.96).
+fit0$par[1] + c(-1,1)*qt(1 - 0.05 / 2, df = n - 1)*sqrt(V[1,1])
+confint(fit0_lm)
+```
+
+
+## Preworkshop Assignment
+
+Please write a general negative log likelihood function for a stock recruit model that can take any covariate input for coefficients $\mathbf{\beta}$. Find the MLE and compare your results with `lm`. 
+
+An example of using `model.matrix` to create a design matrix and compute the expected log recruits per spawner, $\mathbb{E}[\log(R/S)]$ is shown below.
+
+```{r, eval = FALSE}
+  X <- model.matrix(~0 + PopNmL + eff:PopNmL, data = sox)
+  npar <- ncol(X)
+  beta <- rnorm(npar)
+
+  ## Version 1: Matrix multiplication
+  exp_logRS <- X %*% beta
+  dim(exp_logRS)
+  
+  ## Version 2: Looping
+  exp_logRS <- numeric(nrow(X))
+  for(i in 1:nrow(X)) exp_logRS[i] <- sum(X[i,] * beta)
+```
