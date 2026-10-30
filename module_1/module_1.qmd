@@ -182,10 +182,57 @@ plot(mu, ll(mu), xlab = "mu", ylab = "ll", main = "Log-Likelihood", type = "l")
 plot(mu, -ll(mu), xlab = "mu", ylab = "nll", main = "Negative Log-Likelihood", type = "l")
 ```
 
+## Fitting a Likelihood in R
+
+- Maximum of likelihood is also maximum of log-likelihood
+- Maximization is the same as minimizing the negative.
+- Multiplying small numbers is bad...
+
+```{r, echo = TRUE}
+  x <- rnorm(1000, 0, 5)
+  fx <- dnorm(x, 0, 5)
+  log(prod(fx))
+  sum(log(fx))
+```
+
+- In general, we build the log-likelihood in R by summing over the log of each independent component of the likelihood.
+
+$$
+  \log(L(\boldsymbol{\theta}|\mathbf{x}) = \sum \log(f(x_i)).
+$$
+- This is best done in R vectorized. Loops are generally slow, especially when nested.
+- In C++ loops are very fast.
+
+```{r, echo = TRUE}
+  x <- rnorm(1000, 0, 5)
+  ll_vec <- \(a){
+    lfx <- dnorm(x, 0, 5, log = TRUE)
+    ll <- sum(lfx)
+    ll*a
+  }
+  ll_loop <- \(a){  
+    ll <- 0
+    for( i in 1:1000){
+      ll <- ll + dnorm(x[i], 0, 5, log = TRUE)
+    }
+    ll*a
+  }
+
+  ## First taste of RTMB... :)
+  ll_loopc <- RTMB::MakeTape(ll_loop, 1)
+    
+  microbenchmark::microbenchmark(
+    vectorized = ll_vec(1),
+    looped = ll_loop(1),
+    looped_c = ll_loopc(1),
+    times = 100
+  )
+```
+
 ## Optimization in R
 
 - Gradient is the slope (derivative) in terms of the parameters
-- Gradient based methods optimization uses slope to find max/min
+- Gradient based optimization uses slope to find max/min by where the function is flat (gradient = 0)
 - Random start, evaluate objective function, use gradient to move to new value
 - Run until at maximum/minimum (where gradient is zero)
 - Examples are `optim` or `nlminb`
@@ -212,6 +259,10 @@ optim(c(0,0), nll)
 - What about more than one peak? (Multimodality)
 - Derivative is zero at more than one place
 - Want 'global' maximum
+- Random starting points and taking global max works
+- If likelihood looks this way there are likely other things wrong
+- In theory, as we get more data, the likelihood becomes more smooth and 'peaky'
+
 :::
 
 ::: {.column width="60%"}
@@ -233,13 +284,22 @@ ll <- -sapply(mu, negloglik)
 plot(mu, ll, type = 'l', xlab = "mu", ylab = "Log-Likelihood L(mu|x)")
 grid()
 est1 <- nlminb(0, negloglik)
-points(c(0, est1$par), c(-negloglik(0), -est1$obj), col = 'red', pch = c(1, 16), cex = 1.5)
+points(c(0, est1$par), c(-negloglik(0), -est1$obj), col = 'red', pch = c(1, 4), cex = 1.5)
 lines(c(0, est1$par), c(-negloglik(0), -est1$obj), col = 'red', lty = 2,lwd = 2)
 est2 <- nlminb(10, negloglik)
-points(c(10, est2$par), c(-negloglik(10), -est2$obj), col = 'red', pch = c(1, 16), cex = 1.5)
+points(c(10, est2$par), c(-negloglik(10), -est2$obj), col = 'red', pch = c(1, 4), cex = 1.5)
 lines(c(10, est2$par), c(-negloglik(10), -est2$obj), col = 'red', lty = 2, lwd = 2)
 ```
 :::
 
 ::::
 
+## End of Module
+
+- Take home: 
+  * reminder of some basic statistics,
+  * write basic likelihoods in R, 
+  * understand why things are logged,
+  * hand wavy explanation of optimization
+- Questions?
+- Quick Break before a practical session
