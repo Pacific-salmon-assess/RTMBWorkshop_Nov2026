@@ -20,7 +20,7 @@ stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
 sox <- sox |> merge(stock, by = "PopID")
 
 library(ggplot2)
-ggplot(data = sox, aes(x = log(eff), y = log(rec), colour = PopNmL)) + 
+ggplot(data = sox, aes(x = log(spawners), y = log(recruits), colour = PopName)) + 
   geom_point() + 
   theme_bw() + 
   xlab("Log Spawners") + 
@@ -29,28 +29,28 @@ ggplot(data = sox, aes(x = log(eff), y = log(rec), colour = PopNmL)) +
 
 ## Model 
 
-A Ricker stock recruit model relates the number of successfully returning fish (recruits) to the number of spawners, accounting for productivity and mortality in the term $\alpha$ and carrying capacity in $\beta$. Female spawners, $S_{kt}$, in brood year $t$ and from stock $k$, produce $R_{kt}$ recruits. Recruits are estimated based on escapement, fishery removals, and en-route losses, combined over multiple return years, or age classes. For simplicity we will assume that each year and stock may have variable productivity and/or carrying capacity. 
+A Ricker stock recruit model relates the number of successfully returning fish (recruits) to the number of spawners, accounting for productivity and mortality in the term $\alpha$ and carrying capacity in $\gamma$. Effective female spawners, $S_{kt}$, in brood year $t$ and from stock $k$, produce $R_{kt}$ recruits. Recruits are estimated based on escapement, fishery removals, and en-route losses, combined over multiple return years, or age classes. For simplicity we will assume that each year and stock may have variable productivity and/or carrying capacity. 
 
 $$
-  R_{kt} = S_{kt} \exp(\alpha_{kt} -\beta_k S_{k,t}),
+  R_{kt} = S_{kt} \exp(\alpha_{kt} -\gamma_k S_{k,t}),
 $$
-where $\alpha_{kt}$ is log productivity and $\beta_k$ is carrying capacity. This is usually written as the log recruits per spawners, with uncertainty added as white noise with standard deviation $\sigma$, $\epsilon_{k,t} \sim N(0,\sigma^2)$,
+where $\alpha_{kt}$ is log productivity and $\gamma_k$ is carrying capacity. This is usually written as the log recruits per spawners, with uncertainty added as white noise with standard deviation $\sigma$, $\epsilon_{k,t} \sim N(0,\sigma^2)$,
 
 $$
-  \log(R_{kt}/S_{kt}) =\alpha_{kt} - \beta_k S_{k,t} + \epsilon_{k,t}.
+  \log(R_{kt}/S_{kt}) =\alpha_{kt} - \gamma_k S_{k,t} + \epsilon_{k,t}.
 $$
 
 ## Fitting the Model
 
-As we see from the log Ricker model, it looks a lot like a linear model. We define a design matrix $X$, that relates each observation, $i \in \{1,\ldots,n\}$. If we combine the terms $\mathbf{\alpha}$ and $\mathbf{\beta}$ as a set of linear predictors, then we can rewrite the linear model as
+As we see from the log Ricker model, it looks a lot like a linear model. We define a design matrix $X$, that relates each observation, $i \in \{1,\ldots,n\}$. If we combine the terms $\boldsymbol{\alpha}$ and $\boldsymbol{\gamma}$ as a set of linear predictors, $\boldsymbol{\beta}$, then we can rewrite the linear model as
 
 $$
-  \log(R_{i}/S_{i}) = X_i \cdot \mathbf{\beta} + \epsilon_{i}.
+  \log(R_{i}/S_{i}) = X_i \cdot \boldsymbol{\beta} + \epsilon_{i}.
 $$
-If all terms are shared, then  $X_{i1}=1$ and $X_{i2} = S_i$. However, to allow for a different curve per stock we may write `X = model.matrix( ~ 0 + PopNmL + eff:PopNmL, data = sox)`. The likelihood of this equation for $n$ observations, and parameters $\mathbf{\theta} = \{\mathbf{\beta}, \sigma\}$, is
+If all terms are shared, then  $X_{i1}=1$ and $X_{i2} = S_i$. However, to allow for a different curve per stock we may write `X = model.matrix( ~ 0 + PopName + spawners:PopName, data = sox)`. The likelihood of this equation for $n$ observations, and parameters $\boldsymbol{\theta} = \{\boldsymbol{\beta}, \sigma\}$, is
 
 $$
-  L(\mathbf{\theta}|R,S) = \prod_{i=1}^n N(\log(R_i/S_i), X_i \cdot \mathbf{\beta}, \sigma^2),
+  L(\boldsymbol{\theta}|R,S) = \prod_{i=1}^n N(\log(R_i/S_i), X_i \cdot \boldsymbol{\beta}, \sigma^2),
 $$
 where $N()$ is the normal distribution.
 
@@ -62,8 +62,8 @@ $$
 We rely on this fact to define the above likelihood as the product of the probability density of each individual observation. We can fit the model using the `lm` function in R as follows.
 
 ```{r, eval = FALSE}
-sox <- sox |> within(logRS <- log(rec/eff))
-fit <- lm(logRS ~ 0 + PopNmL + eff:PopNmL, data = sox)
+sox <- sox |> within(logRS <- log(recruits/spawners))
+fit <- lm(logRS ~ 0 + PopName + spawners:PopName, data = sox)
 # summary(fit)
 ```
 
@@ -101,7 +101,7 @@ negll <- function(pars, data){
 pars_init <- c(0,0)
 fit0 <- nlminb(pars_init, negll, data = x)
 ```
-The function `nlmbin` searches the function to find the minimum, but other optimizers are also fine (e.g. `optim`). If we compare our estimates with `lm` we find that $\mu$ is the same but $\sigma$ is different. This is because the MLE of the variance term is actually biased and is generally corrected for bias in the `lm` function. To match them we must do bias correction of $n/(n-1)$.
+The function `nlmbin` searches the function to find the minimum, but other optimizers are also fine (e.g. `optim`). If we compare our estimates with `lm` we find that $\mu$ is the same but $\sigma$ is different. This is because the MLE of the variance term is actually biased and is generally corrected for bias in the `lm` function. To match them we must do bias correction for $a$ parameters (1 in the example below) $n/(n-a)$.
 
 ```{r, eval = FALSE}
 fit0$par[1] - mean(x) ## Should be the same...
@@ -111,27 +111,15 @@ exp(fit0$par[2]) - sigma(fit0_lm)
 exp(fit0$par[2])*sqrt(n/(n-1)) - sigma(fit0_lm) ## Same
 ```
 
-We will discuss a lot of these concepts within the course. But for those who want to take this further, we will now estimate the uncertainty of the parameter. To do this, we can use the inverse of the hessian of the negative log likelihood. This sounds super complicated but the Hessian is the matrix of second derivatives, and describes the curvature around the MLE and thus variance, or at least in a very hand wavy way. This gets more complicated for parameter transformations and will be discussed in detail in the course.
-
-```{r, eval = FALSE}
-H <- numDeriv::hessian(negll, fit0$par, data = dat)
-V <- solve(H)
-## 95% CI for mu: Note that the test statistic is t, not z.
-## We know the exact distribution of the parameter, so don't approximate it
-## using a normal (i.e. 1.96).
-fit0$par[1] + c(-1,1)*qt(1 - 0.05 / 2, df = n - 1)*sqrt(V[1,1])
-confint(fit0_lm)
-```
-
 
 ## Preworkshop Assignment
 
-Please write a general negative log likelihood function for a stock recruit model that can take any covariate input for coefficients $\mathbf{\beta}$. Find the MLE and compare your results with `lm`. 
+Please write a general negative log likelihood function for a stock recruit model that can take any covariate input for coefficients $\boldsymbol{\beta}$. Find the MLE and compare your results with `lm`. 
 
 An example of using `model.matrix` to create a design matrix and compute the expected log recruits per spawner, $\mathbb{E}[\log(R/S)]$ is shown below.
 
 ```{r, eval = FALSE}
-  X <- model.matrix(~0 + PopNmL + eff:PopNmL, data = sox)
+  X <- model.matrix(~0 + PopName + spawners:PopName, data = sox)
   npar <- ncol(X)
   beta <- rnorm(npar)
 

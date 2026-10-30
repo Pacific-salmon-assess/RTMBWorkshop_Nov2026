@@ -19,9 +19,10 @@ format:
 
 ## Introductions
 
+- Paul van Dam-Bates (Fisheries and Oceans Canada)
 - PhD Statistics University of St Andrews (Scotland)
 - NIMBLE Development Team [here](https://r-nimble.org/)
-- Work on computational statistics (e.g. approximate posterior distributions, MCMC methods, efficient matrix exponentiation)
+- Work on computational statistics (e.g. approximate posterior distributions, MCMC methods, efficient matrix exponentiation, and other things)
 - R packages `nimbleQuad` and `spbal`
 
 ## Why RTMB
@@ -35,33 +36,34 @@ format:
 ## Course Structure
 
 - Can't code if you don't understand model
-- Focus on understanding a model, then coding it in RTMB
+- Focus on understanding a model, then coding it in R
+- RTMB is very simple if you know how to code likelihoods in R
 - Will focus on understanding in the mornings and practical coding in the afternoon
 
 ## Learning Outcomes
 
 - Understand how to fit a custom likelihood and report on it
 - Basic programming in RTMB
-- Fitting a random effects model
-- Useful RTMB tricks
+- Fitting hierarchical models
+- RTMB specific applications
 
 ## Outline Day 1
 
-1. (9:00 – 9:50) Welcome and course introduction, introduction to maximum likelihood estimation, and assignment review.
+1. (9:00 – 9:50) Welcome and course introduction, introduction to maximum likelihood estimation.
 2. (10:00 - 10:50) Writing and fitting a stock recruit likelihood in R. Improve that likelihood with RTMB and compare. Compare with standard R packages. 
 3. (11:00 – 11:50) Introduction to RTMB and automatic differentiation (AD). Compare AD with finite differencing. What is a gradient and a Hessian. 
 4. (13:00 – 13:50) Add random effects to your likelihood. Laplace and RTMB 
 5. (14:00 – 14:50) Practice writing likelihoods with random effects and fit them. Hierarchical stock recruitment models.  Compare output with `glmmTMB`.
-6. (15:00 – 16:30) Additional random effect structures (e.g. time varying productivity). 
+6. (15:00 – 16:00) Additional random effect structures (e.g. time varying productivity). 
 
 ## Outline Day 2
 
 1. (9:00 – 9:50) Variance estimation for maximum likelihood. Delta method to approximate parameters. Using RTMB to report variance and confidence intervals. 
 2. (10:00 – 10:50) RTMB functionality. Learn little details about how to use RTMB effectively. 
 3. (11:00 – 11:50) Writing helper functions and atomics (e.g. Lambert W). Best coding practices. 
-4. (13:00 – 16:30) Practice writing complex likelihood functions in RTMB 
+4. (13:00 – 16:00) Practice writing complex likelihood functions in RTMB 
 
-## PDF
+## Probability Functions
 
 - Random variable $x$
 - Probability mass function $p(x)$ if $x$ is discrete
@@ -131,10 +133,28 @@ $$
 ## Joint Density
 
 - Some sample $\textbf{x}$, of size $n$
-- Assume $x_i \sim N(\mu, \sigma)$
-- If we assume all are independent, then the joint density is
+- Assume $x_i \sim N(\mu, \sigma)$ and all are independent.
+- Then the joint density is
 $$
   f(\textbf{x}) = f(x_1, \ldots, f_n) = f(x_1)f(x_2) \cdots f(x_n) = \prod_{i=1}^n f(x_i)
+$$
+
+## Conditional Density
+
+- Some sample $\textbf{x}$, of size $n$
+- Assume $x_i|u \sim N(u + \mu, \sigma)$
+- $u \sim N(0, 1)$ is a random variable (e.g. random effect)
+- The $x$ values are not independent!
+$$
+  f(\textbf{x}) \neq \prod_{i=1}^n f(x_i)
+$$
+- However, conditional on the value of $u$, they are independent,
+$$
+  f(\textbf{x}|u) = \prod_{i=1}^n f(x_i|u)
+$$
+- Joint density can be written as
+$$
+  f(\textbf{x}) = \int f(\textbf{x},u)du = \int f(\textbf{x}|u)f(u)du
 $$
 
 ## Likelihood
@@ -188,4 +208,16 @@ optim(c(0,0), nll)
 ## Optimization in R
 
 - What about more than one peak?
+
+```{r}
+set.seed(42)
+x <- c(rnorm(30, 2, 1), c(30, 8, 1))
+ll <- \(mu){
+  sum(log(0.5*dnorm(x, mu, 1) + 0.5*dnorm(x, 4, 3)))
+}
+mu1 <- seq(-2, 12, by = 0.05)
+ll_all <- sapply(mu1, FUN = \(y){ll(y)})
+plot(mu1, ll_all, type = 'l')
+
+```
 - Write a mixture model here with label switching...

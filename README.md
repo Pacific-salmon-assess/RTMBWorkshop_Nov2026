@@ -28,11 +28,11 @@ Day 1: Monday November 16
 3. (11:00 – 11:50) Introduction to RTMB and automatic differentiation (AD). Compare AD with finite differencing. What is a gradient and a Hessian. 
 4. (13:00 – 13:50) Add random effects to your likelihood. Laplace and RTMB 
 5. (14:00 – 14:50) Practice writing likelihoods with random effects and fit them. Hierarchical stock recruitment models.  Compare output with `glmmTMB`.
-6. (15:00 – 16:30) Additional random effect structures (e.g. time varying productivity). 
+6. (15:00 – 16:00) Additional random effect structures (e.g. time varying productivity). 
 
 Day 2: Tuesday November 17
 
 1. (9:00 – 9:50) Variance estimation for maximum likelihood. Delta method to approximate parameters. Using RTMB to report variance and confidence intervals. 
 2. (10:00 – 10:50) RTMB functionality. Learn little details about how to use RTMB effectively. 
 3. (11:00 – 11:50) Writing helper functions and atomics (e.g. Lambert W). Best coding practices. 
-4. (13:00 – 16:30) Practice writing complex likelihood functions in RTMB 
+4. (13:00 – 16:00) Practice writing complex likelihood functions in RTMB 
