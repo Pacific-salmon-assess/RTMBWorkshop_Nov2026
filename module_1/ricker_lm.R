@@ -46,19 +46,19 @@ my_lm <- function(formula, data){
       ll = -fit$obj))
 }
 
-fit1 <- my_lm(formula = log(rec/eff) ~ 0 + PopNmL + PopNmL:eff, data = sox)
-fit <- lm(log(rec/eff) ~ 0 + PopNmL + PopNmL:eff, data = sox)
+fit1 <- my_lm(formula = log(recruits/spawners) ~ 0 + PopName + PopName:spawners, data = sox)
+fit <- lm(log(recruits/spawners) ~ 0 + PopName + PopName:spawners, data = sox)
 range(coef(fit) - fit1$beta) ## Not ideal...
 sigma(fit) - fit1$sigma  ## A little bit different...
 logLik(fit) - fit1$ll  ## Pretty much same log-likelihood, must be a very flat bumpy surface...
 
 ## Let's scale things and see if it fits easier.
 sox <- sox %>% 
-  mutate(logRS = log(rec/eff)) %>% 
-  group_by(PopNmL) %>% 
-  mutate(eff_scaled = scale(eff))
-fit1 <- my_lm(formula = logRS ~ 0 + PopNmL + PopNmL:eff_scaled, data = sox)
-fit <- lm(logRS ~ 0 + PopNmL + PopNmL:eff_scaled, data = sox)
+  mutate(logRS = log(recruits/spawners)) %>% 
+  group_by(PopName) %>% 
+  mutate(spawners_scaled = scale(spawners))
+fit1 <- my_lm(formula = logRS ~ 0 + PopName + PopName:spawners_scaled, data = sox)
+fit <- lm(logRS ~ 0 + PopName + PopName:spawners_scaled, data = sox)
 range(coef(fit) - fit1$beta) 
 ## Much better! Numerical issues... Some beta values can be very small. Better to scale them
 
@@ -93,4 +93,4 @@ my_lm2 <- function(formula, data){
     return(list(beta = beta_fit, sigma = exp(par_values[npars+1])))
 }
 
-fit2 <- my_lm2(formula = log(rec/eff) ~ 0 + PopNmL + PopNmL:eff, data = sox)
+fit2 <- my_lm2(formula = log(recruits/spawners) ~ 0 + PopName + PopName:spawners, data = sox)

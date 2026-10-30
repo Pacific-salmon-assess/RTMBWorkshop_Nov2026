@@ -4,7 +4,6 @@ author: "Paul van Dam-Bates"
 format:
   revealjs:
     theme: simple
-    css: custom.scss
     slide-number: true
     show-slide-number: all
     progress: true
@@ -207,17 +206,40 @@ optim(c(0,0), nll)
 
 ## Optimization in R
 
-- What about more than one peak?
+:::: {.columns style="display: flex; align-items: center;"}
 
+::: {.column width="40%"}
+- What about more than one peak? (Multimodality)
+- Derivative is zero at more than one place
+- Want 'global' maximum
+:::
+
+::: {.column width="60%"}
 ```{r}
+#| fig-width: 7
+#| fig-height: 5.5
+#| out-width: "100%"
+#| fig-align: "center"
+#| echo: false
+#| 
 set.seed(42)
-x <- c(rnorm(30, 2, 1), c(30, 8, 1))
-ll <- \(mu){
-  sum(log(0.5*dnorm(x, mu, 1) + 0.5*dnorm(x, 4, 3)))
+x <- c(rnorm(30, 2, 1), rnorm(30, 7, 1))
+negloglik <- \(mu){
+  -sum(log(0.5*dnorm(x, mu, 1) + 0.5*dnorm(x, 3, 3)))
 }
-mu1 <- seq(-2, 12, by = 0.05)
-ll_all <- sapply(mu1, FUN = \(y){ll(y)})
-plot(mu1, ll_all, type = 'l')
+mu <- seq(-2, 12, by = 0.05)
+ll <- -sapply(mu, negloglik)
 
+plot(mu, ll, type = 'l', xlab = "mu", ylab = "Log-Likelihood L(mu|x)")
+grid()
+est1 <- nlminb(0, negloglik)
+points(c(0, est1$par), c(-negloglik(0), -est1$obj), col = 'red', pch = c(1, 16), cex = 1.5)
+lines(c(0, est1$par), c(-negloglik(0), -est1$obj), col = 'red', lty = 2,lwd = 2)
+est2 <- nlminb(10, negloglik)
+points(c(10, est2$par), c(-negloglik(10), -est2$obj), col = 'red', pch = c(1, 16), cex = 1.5)
+lines(c(10, est2$par), c(-negloglik(10), -est2$obj), col = 'red', lty = 2, lwd = 2)
 ```
-- Write a mixture model here with label switching...
+:::
+
+::::
+
