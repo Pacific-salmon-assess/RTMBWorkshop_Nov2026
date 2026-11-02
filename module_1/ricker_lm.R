@@ -1,5 +1,5 @@
 
-## Solution to Assignment
+## A Solution to Assignment
 
 ## Libraries:
 library(ggplot2)
@@ -11,6 +11,7 @@ setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
 stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
 sox <- sox %>% left_join(stock, by = "PopID")
+sox <- sox %>% filter(!is.na(spawners))
 
 ## Option 1:
 ## Nested function for local environment
@@ -56,9 +57,17 @@ logLik(fit) - fit1$ll  ## Pretty much same log-likelihood, must be a very flat b
 sox <- sox %>% 
   mutate(logRS = log(recruits/spawners)) %>% 
   group_by(PopName) %>% 
-  mutate(spawners_scaled = scale(spawners))
+  mutate(sd_spawners = sd(spawners)) %>%
+  ungroup() %>%
+  mutate(spawners_scaled = spawners/sd_spawners)
+  
 fit1 <- my_lm(formula = logRS ~ 0 + PopName + PopName:spawners_scaled, data = sox)
-fit <- lm(logRS ~ 0 + PopName + PopName:spawners_scaled, data = sox)
+scale_back <- sox %>% distinct(PopName, sd_spawners) %>% arrange(PopName)
+car_cap <- grep("spawners", names(fit1$beta))
+fit1$beta[grep("spawners", names(fit1$beta))] <- fit1$beta[grep("spawners", names(fit1$beta))] / scale_back$sd_spawners
+range(fit1$beta - coef(fit))
+
+fit <- lm(logRS ~ 0 + PopName + PopName:spawners, data = sox)
 range(coef(fit) - fit1$beta) 
 ## Much better! Numerical issues... Some beta values can be very small. Better to scale them
 
@@ -87,6 +96,7 @@ my_lm2 <- function(formula, data){
   environment(nll) <- environment()   
 
   fit <- nlminb(pars_init, nll)
+  if(fit$convergence != 0) cat(" [Warning]", fit$message, ".\n")  
   par_values <- fit$par
   beta_fit <- par_values[1:npars]
   names(beta_fit) <- colnames(X)

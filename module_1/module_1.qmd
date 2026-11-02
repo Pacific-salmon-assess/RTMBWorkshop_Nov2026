@@ -1,6 +1,5 @@
 ---
-title: "RTMB Course"
-author: "Paul van Dam-Bates"
+title: "PSC RTMB Course"
 format:
   revealjs:
     theme: simple
@@ -13,6 +12,9 @@ format:
     code-line-numbers: true
     highlight-style: github
     scrollable: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
 ---
 
 
@@ -50,8 +52,8 @@ format:
 
 1. (9:00 – 9:50) Welcome and course introduction, introduction to maximum likelihood estimation.
 2. (10:00 - 10:50) Writing and fitting a stock recruit likelihood in R. Improve that likelihood with RTMB and compare. Compare with standard R packages. 
-3. (11:00 – 11:50) Introduction to RTMB and automatic differentiation (AD). Compare AD with finite differencing. What is a gradient and a Hessian. 
-4. (13:00 – 13:50) Add random effects to your likelihood. Laplace and RTMB 
+3. (11:00 – 11:50) Introduction to RTMB and automatic differentiation (AD). Compare AD with finite differencing.
+4. (13:00 – 13:50) Add random effects to your likelihood. Laplace and RTMB
 5. (14:00 – 14:50) Practice writing likelihoods with random effects and fit them. Hierarchical stock recruitment models.  Compare output with `glmmTMB`.
 6. (15:00 – 16:00) Additional random effect structures (e.g. time varying productivity). 
 
@@ -62,30 +64,149 @@ format:
 3. (11:00 – 11:50) Writing helper functions and atomics (e.g. Lambert W). Best coding practices. 
 4. (13:00 – 16:00) Practice writing complex likelihood functions in RTMB 
 
-## Probability Functions
+## Derivatives
 
-- Random variable $x$
-- Probability mass function $p(x)$ if $x$ is discrete
+- You will need a basic understanding of calculus in this course.
 
+- Derivative is the rate of change of a function $f$ with respect to $x$,
+
+$$
+  \frac{df}{dx} = \lim_{\Delta \to 0} \frac{f(x + \Delta) - f(x)}{\Delta}
+$$
+- For a straight line, the derivative is constant,
+
+$$
+\begin{aligned}
+  f(x) &= 3x\\
+  \frac{df}{dx} &= 3
+\end{aligned}
+$$
+
+## Derivatives
+
+- For curves, the derivative changes depending on the value of $x$, 
+
+$$
+\begin{aligned}
+  f(x) &= 3 - 3x - (x-5)^2\\
+  \frac{df}{dx} &= - 3 - 2(x-5)
+\end{aligned}
+$$
+
+- The maximum/minimum is when the slope is flat, or $\frac{df}{dx} = 0$
+
+$$
+\begin{aligned}
+    \frac{df}{dx} & = 0\\
+    - 3 - 2(x-5) & = 0 \\
+    x & = -3/2 + 5 
+\end{aligned}
+$$
+- We can numerically find the maximum in R.
+
+```{r}
+#| echo: true
+
+max_x <- optimise(f=\(x){3-3*x -(x-5)^2}, maximum = TRUE, interval = c(-10, 10))
+max_x$maximum
+```
+
+## Derivatives
+
+![](gradient.gif){fig-align="center" width="75%"}
+
+## Gradient
+
+- Derivative in multiple dimensions
+
+$$
+  \frac{\partial f(x,y)}{x} = \lim_{\Delta \to 0} \frac{f(x + \Delta, y) - f(x,y)}{\Delta}.
+$$
+- Gradient is the vector of these derivatives,
+
+$$
+  \nabla f(x,y) = \Big\{ \frac{\partial f(x,y)}{x}, \frac{\partial f(x,y)}{y} \Big\}
+$$
+
+- Minimization/maximization is where all partial derivatives are zero.
+
+## Hessian Matrix
+
+- Second derivatives tell us the rate of change of the derivative.
+
+- Identify inflection point:
+  * Positive (Increasing at an increasing rate) *Minimum*
+  * Negative (Increasing at a decreasing rate) *Maximum*
+
+- Hessian is matrix of all second derivatives
+
+$$
+  H_f = \nabla^2 f(x,y) = \begin{bmatrix} 
+\frac{\partial^2 f}{\partial x^2} & \frac{\partial^2 f}{\partial x \partial y} \\ 
+\frac{\partial^2 f}{\partial y \partial x} & \frac{\partial^2 f}{\partial y^2}
+\end{bmatrix}
+$$
+
+- Matrix version
+  * Positive-definite means *Minimum*
+  * Negative-definite means *Maximum*
+
+- Variance is inverse of negative Hessian of log-likelihood.
+- If Hessian isn't positive-definite, can't calculate variance.
+
+## First RTMB Function
+
+```{r}
+#| echo: true
+
+f <- \(x){3-3*x -(x-5)^2} ## Function
+df <- \(x){-3 -2*(x-5)}   ## Derivative
+d2f <- \(x){-2}           ## Second Derivative
+
+fc <- RTMB::MakeTape(f, 0)    ## Evaluates in C++
+dfc <- fc$jacfun()            ## Create a derivative function
+d2fc <- dfc$jacfun()          ## Create a derivative of derivative function
+
+f(3) - fc(3)
+df(3) - dfc(3)
+d2f(3) - d2fc(3)
+```
+
+## Probability Mass Function
+
+- Random variable $x$ is discrete 
+- Probability mass function $p(x)$
+- Typical Functions: Binomial, Poisson, Negative Binomial
+  
 ```{r}
 x <- 0:20
 px <- dbinom(x, size = 20, prob = 0.25)
 plot(x, px, ylab = "p(x)", xlab = "x", col = "black", lwd = 3, type = "h")
 ```
 
-- Probability density function $f(x)$ if $x$ is continuous.
+## Probability Density Function
+
+- Random variable $x$ is continuous
+- Probability density function $f(x)$
 - $f(x)$ describes a density, not a probability of an event.
-- Probability defined by some area under the curve, e.g.
+- Typical Functions: Normal, Student t, Gamma, Beta
+- Probability defined by some area under the curve, (CDF)
+
 $$
-  p(x \leq 1)= \int_{-\infty}^1 f(x)dx
+  p(x \leq 1) = \int_{-\infty}^1 f(x)dx
 $$
 
+::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
 ```{r}
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "100%"
 x <- seq(-5, 5, by = 0.01)
 fx <- dnorm(x, 0, 1)
 plot(x, fx, ylab = "f(x)", xlab = "x", type = "l")
 polygon(c(x[x <= 1], 1, 0), c(fx[x <= 1], 0, 0), col="blue", border=NA)
 ```
+:::
 
 ## Expectation
 
@@ -114,7 +235,7 @@ $$
 
 ## Variance
 
-- Definition of variance is difference of squared expectation and expectation squared.
+- Variance is difference of squared expectation and expectation squared.
 $$
   Var(x) = \mathbb{E}(x^2) - \mathbb{E}(x)^2.
 $$
@@ -135,7 +256,11 @@ $$
 - Assume $x_i \sim N(\mu, \sigma)$ and all are independent.
 - Then the joint density is
 $$
-  f(\textbf{x}) = f(x_1, \ldots, f_n) = f(x_1)f(x_2) \cdots f(x_n) = \prod_{i=1}^n f(x_i)
+\begin{aligned}
+  f(\textbf{x})  & = f(x_1, \ldots, f_n)\\
+  & = f(x_1)f(x_2) \cdots f(x_n)\\ 
+  & =  \prod_{i=1}^n f(x_i)
+\end{aligned}
 $$
 
 ## Conditional Density
@@ -158,9 +283,13 @@ $$
 
 ## Likelihood
 
-- For some parameters $\mathbf{\theta} = \{\mu, \sigma\}$
+- For some parameters $\boldsymbol{\theta} = \{\mu, \sigma\}$
 - Likelihood is the data joint density expressed in terms of the parameters, conditional on the data.
-- $L(\mathbf{\theta} | \textbf{x}) = \prod_{i=1}^n f(x_i)$
+
+$$
+L(\boldsymbol{\theta} | \textbf{x}) = \prod_{i=1}^n f(x_i)
+$$
+
 - Maximum likelihood estimation -- Find maximum values of parameters given the data.
 
 ```{r}
@@ -294,12 +423,34 @@ lines(c(10, est2$par), c(-negloglik(10), -est2$obj), col = 'red', lty = 2, lwd =
 
 ::::
 
+## Basic RTMB Example
+
+```{r}
+#| echo: true
+
+library(RTMB)
+set.seed(42)
+x <- rnorm(30, 2, 1)
+negloglik <- \(theta){
+  mu <- theta[1]
+  sigma <- exp(theta[2])
+  ans <- -sum(dnorm(x, mu, sigma, log = TRUE))
+  return(ans)
+}
+obj <- RTMB::MakeTape(negloglik, numeric(2))
+gr <- obj$jacfun()
+
+fit <- nlminb(c(0,0), obj, obj$jacobian)
+fit$par
+```
+
 ## End of Module
 
 - Take home: 
-  * reminder of some basic statistics,
-  * write basic likelihoods in R, 
-  * understand why things are logged,
+  * derivatives will be important in this course
+  * reminder of fundamental statistics
+  * write basic likelihoods in R
+  * basic numerical thoughts
   * hand wavy explanation of optimization
 - Questions?
 - Quick Break before a practical session
