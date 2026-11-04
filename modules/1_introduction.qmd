@@ -1,0 +1,67 @@
+---
+title: "PSC RTMB Course"
+format:
+  revealjs:
+    theme: simple
+    slide-number: true
+    show-slide-number: all
+    progress: true
+    width: 1280
+    height: 720
+    embed-resources: true
+    code-line-numbers: true
+    highlight-style: github
+    scrollable: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
+---
+
+
+## Welcome
+
+- Introductions
+  * Name and Organization
+  * Experience with TMB, R, C++
+  * What are you hoping to learn
+  * Special interest
+
+## Why RTMB
+
+- R wrapper for TMB
+- Run R code in C++ for speed
+- Automatic Differentiation
+- Fit models with random effects (e.g. Laplace)
+- Easy code checking in R
+
+## Course Structure
+
+- Can't code if you don't understand model
+- Focus on understanding a model, then coding it in R
+- RTMB is very simple if you know how to code a likelihood in R
+- Will focus on understanding in the mornings and practical coding in the afternoon
+
+## Learning Outcomes
+
+- Understand how to fit a custom likelihood and report on it
+- Basic programming in RTMB
+- Fitting hierarchical models
+- RTMB specific applications
+
+## Outline Day 1
+
+1. (9:00 – 10:00) Introduction to writing a likelihood with RTMB.
+2. (10:00 - 11:00) Computing gradients and optimization
+3. (11:00 – 12:00) Variance estimation and reporting
+4. (12:00 - 13:00) Lunch
+4. (13:00 – 14:00) Hierarchical models in RTMB
+5. (14:00 – 15:00) Practice fitting hierarchical models.
+6. (15:00 – 16:00) Additional random effect structures (e.g. time varying productivity). 
+
+## Outline Day 2
+
+1. (9:00 – 9:50) Variance estimation for maximum likelihood. Delta method to approximate parameters. Using RTMB to report variance and confidence intervals. 
+2. (10:00 – 10:50) RTMB functionality. Learn little details about how to use RTMB effectively. 
+3. (11:00 – 11:50) Writing helper functions and atomics (e.g. Lambert W). Best coding practices. 
+4. (13:00 – 16:00) Practice writing complex likelihood functions in RTMB 
+

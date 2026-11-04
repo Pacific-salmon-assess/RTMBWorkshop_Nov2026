@@ -1,0 +1,353 @@
+---
+title: "Inference with RTMB"
+format:
+  revealjs:
+    theme: simple
+    slide-number: true
+    show-slide-number: all
+    progress: true
+    width: 1280
+    height: 720
+    embed-resources: true
+    code-line-numbers: true
+    highlight-style: github
+    scrollable: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
+---
+
+## RTMB Sockeye Ricker
+
+```{r}
+#| echo: false
+library(ggplot2)
+library(dplyr)
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox %>% left_join(stock, by = "PopID")
+sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
+sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup()
+```
+
+```{r}
+#| echo: true
+library(RTMB)
+
+sox$stock <- as.numeric(factor(sox$PopName))
+nstocks <- max(sox$stock)
+parameters <- list(
+  alpha = runif(nstocks, 2, 5),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5)
+)
+
+sox$logRS <- log(sox$recruits/sox$spawners)
+
+negll <- function(pars){
+  getAll(pars)
+  beta <- exp(logbeta)
+  sigma <- exp(logsigma)
+  mu <- alpha[sox$stock] - beta[sox$stock]*sox$spawners_scaled
+  -sum(dnorm(sox$logRS, mu, sigma[sox$stock], log = TRUE))
+}
+obj <- MakeADFun(func = negll, parameters = parameters, silent = TRUE)
+```
+
+## Find MLE
+
+```{r}
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "100%"
+#| echo: true
+
+par_init <- obj$par + rnorm(length(obj$par))
+mle <- nlminb(par_init, obj$fn, obj$gr)
+```
+
+## Now What?
+
+1. Check convergence
+2. Transform parameters to real scale
+3. Compute variance
+4. Compute confidence intervals
+
+## Convergence
+
+- Check for error messages from optimization.
+```{r}
+#| echo: true
+
+mle$convergence
+mle$message
+```
+
+- Make sure all the gradient values are small
+```{r}
+#| echo: true
+
+max(abs(obj$gr(mle$par)))
+```
+
+- Hessian should be positive definite. This one will be obvious if the variance can be computed.
+```{r}
+#| echo: true
+
+## solve(obj$he(mle$par))
+```
+
+
+## Convergence
+
+- If you are very thorough, you will try multiple starting points and make sure they all end up the same.
+
+::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
+```{r}
+#| echo: true
+
+nll <- NULL
+pars <- NULL
+for( i in 1:50 ){
+  par_init <- rnorm(length(obj$par), 0, 3)
+  mle <- nlminb(par_init, obj$fn, obj$gr)
+  if(mle$convergence == 0){
+    pars <- cbind(pars, mle$par)
+    nll <- c(nll, mle$objective)
+  }
+}
+max(nll) - min(nll)
+```
+:::
+
+## Transform Parameters
+
+- `REPORT` to return value of variable
+- `ADREPORT` to include uncertainty of variable
+- `sdeport` will return standard deviations of parameters
+- `as.list` of `sdreport` object will create a list of the parameters.
+
+```{r}
+#| echo: true
+
+negll <- function(pars){
+  getAll(pars)
+  beta <- exp(logbeta)
+  sigma <- exp(logsigma)
+  beta_real <- beta*transform_beta
+  ADREPORT(beta)
+  mu <- alpha[sox$stock] - beta[sox$stock]*sox$spawners_scaled
+  -sum(dnorm(sox$logRS, mu, sigma[sox$stock], log = TRUE))
+}
+transform_beta <- sox$spawners/sox$sd_spawners
+
+obj <- MakeADFun(negll, parameters, silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+sdr <- sdreport(obj, fit$par)
+res <- summary(sdr, "fixed")
+res_real <- summary(sdr, "report")
+```
+
+
+## Compute Variance
+
+- Variance or standard deviation is approximated by inverse of Hessian of negative log-likelihood,
+
+$$ 
+  V(\widehat{\boldsymbol{\theta}}) = H^{-1}(\widehat{\boldsymbol{\theta}}).
+$$
+
+```{r}
+#| echo: true
+
+H <- obj$he(fit$par)
+V <- solve(H)
+std_err <- sqrt(diag(V))
+max(abs(res[, "Std. Error"] - std_err))
+```
+
+## Compute Variance of Transformed Variables
+
+- Delta Method can be used to compute standard error of transformed variables, for transformation $g$,
+
+$$ 
+  V(g(\widehat{\boldsymbol{\theta}})) = \nabla g V(\widehat{\boldsymbol{\theta}}) \nabla g'.
+$$
+
+- For our example above:
+  * $g(\alpha) = \alpha$ and $g'(\alpha) = 1$
+  * $g(log \beta) = \exp(log \beta)$ and $g'(\log \beta) = \exp(\log \beta) = \beta$
+
+::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
+```{r}
+#| echo: true
+
+which_alpha <- grepl("alpha", names(obj$par))
+par_real <- MakeTape(
+\(x){
+  x[!which_alpha] <- exp(x[!which_alpha]);
+  return(x)}, obj$par)
+g <- par_real$jacobian(fit$par)
+
+V_real <- g %*% V %*% t(g)
+std_err_real <- sqrt(diag(V_real))
+max(abs(res_real[, "Std. Error"] - std_err_real[grepl("beta", names(obj$par))]))
+```
+:::
+
+## Confidence Interval
+
+- Typical format of 95% confidence interval ('Wald')
+  $$
+    \widehat{\beta} \pm z_{0.025} \, \text{sd}(\widehat{\alpha})
+  $$
+- $z$ is a standard normal distribution. For a linear regression we know that the slope terms are $t$ distributed
+
+- Quantiles / confidence intervals are transformation invariant (i.e. you can just transform the CI to process for real scale)
+
+::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
+```{r}
+#| echo: false
+#| fig-width: 7
+#| fig-height: 5.5
+#| out-width: "100%"
+#| fig-align: "center"
+
+estimates <- as.list(sdr, "Est") ## parameter estimates
+std.error <- as.list(sdr, "Std. Error") ## parameter estimates
+logbeta <- estimates$logbeta
+sd_logbeta <- std.error$logbeta
+nlbeta <- length(logbeta)
+low_lbeta <- logbeta + qnorm(0.025)*sd_logbeta
+high_lbeta <- logbeta + qnorm(0.975)*sd_logbeta
+
+stocks <- levels(factor(sox$PopName))
+plot(logbeta, pch = 16, ylim = c(-6, 2), xlab = "stock", ylab = "log(beta)")
+arrows(1:nlbeta, low_lbeta, 1:nlbeta, high_lbeta, length = 0.1, 
+  angle = 90, code = 3, col = "black", lwd = 2)
+```
+:::
+
+## Confidence Interval Transformed
+
+- Compare confidence interval transformed vs transforming first and then computing confidence interval.
+
+::: {#my-long-container style="height: 300px; border: 1px solid #ccc;"}
+```{r}
+#| echo: true
+#| fig-width: 7
+#| fig-height: 5.5
+#| out-width: "100%"
+#| fig-align: "center"
+
+low_tr <- exp(low_lbeta)
+high_tr <- exp(high_lbeta)
+
+beta <- as.list(sdr, "Est", report=TRUE)$beta ## parameter estimates
+sd_beta <- as.list(sdr, "Std. Error", report=TRUE)$beta ## parameter estimates
+low_r <- beta + qnorm(0.025)*sd_beta
+high_r <- beta + qnorm(0.975)*sd_beta
+nbeta <- length(beta)
+
+plot(exp(logbeta), pch = 16, ylim = c(-0.5, 1.5), xlab = "stock", ylab = "beta")
+arrows(1:nbeta, low_tr, 1:nbeta, high_tr, length = 0.1, angle = 90, code = 3, col = "black", lwd = 2)
+points(1:nbeta+0.25, beta, pch = 16, col='blue')
+arrows(1:nbeta+0.25, low_r, 1:nbeta+0.25, high_r, length = 0.1, angle = 90, code = 3, col = "blue", lwd = 2)
+```
+:::
+
+## Profile Confidence Interval
+
+- Best confidence interval but computationally demanding
+- Find 95% area under profile likelihood
+- Profile likelihood traverses a single parameter values, finds MLE for other values.
+- Takes into account skew of distribution etc.
+
+```{r}
+#| echo: true
+prof <- TMB::tmbprofile(obj, name = 31, trace = FALSE)
+plot(prof)
+abline(v = fit$par[31], col = 'red', lty = 2)
+prof_int <- confint(prof)
+```
+
+```{r}
+#| echo: true
+
+plot(1:3, rep(beta[12], 3), ylim = c(-0.5, 1.5), pch = 16, xlab = "Interval Type", xaxt = "n")
+axis(1, at = 1:3, labels = c("Transform", "Real Scale", "Profile"))
+
+arrows(1:3, c(low_tr[12], low_r[12], exp(prof_int[1])), 1:3, 
+  c(high_tr[12], high_r[12], exp(prof_int[2])), length = 0.1, angle = 90, 
+  code = 3, col = "black", lwd = 2)
+```
+
+## Bootstrapped Confidence Interval
+
+- Declare data as `OBS` to let RTMB recognize it as data.
+- Do a data update so that you don't have to retape each time `DataEval`
+
+::: {#my-long-container style="height: 600px; border: 1px solid #ccc;"}
+```{r}
+#| echo: true
+
+negll <- function(pars){
+  getAll(pars, data, warn=FALSE)
+  logRS <- DataEval(\(x){boot$logRS}) ## Updates the data.
+  logRS <- OBS(logRS)
+  beta <- exp(logbeta)
+  sigma <- exp(logsigma)
+  beta_real <- beta[stock]*transform_beta
+  REPORT(beta)
+  mu <- alpha[stock] - beta[stock]*spawners_scaled
+  logRS %~% dnorm(mu, sigma[stock]) ## Alternative way to define likelihood...
+}
+
+data <- list(stock = sox$stock, 
+  spawners_scaled = sox$spawners_scaled, 
+  transform_beta = sox$spawners/sox$sd_spawners
+  )
+boot <- list(logRS = sox$logRS)
+
+obj <- MakeADFun(negll, parameters, silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+
+boot.pars <- NULL
+for( i in 1:1000 ){
+  boot$logRS <- obj$simulate(fit$par)$logRS
+  newfit <- nlminb(obj$par, obj$fn, obj$gr)
+  newbeta <- obj$report(newfit$par)$beta
+  boot.pars <- cbind(boot.pars, newbeta)
+}
+boot.ci <- apply(boot.pars, 1, quantile, probs = c(0.025, 0.975) )
+
+plot(1:4, rep(beta[12], 4), ylim = c(-0.5, 1.5), pch = 16, xlab = "Interval Type", xaxt = "n")
+axis(1, at = 1:4, labels = c("Transform", "Real Scale", "Profile", "Bootstrapped"))
+
+arrows(1:4, c(low_tr[12], low_r[12], exp(prof_int[1]), boot.ci[1,12]), 1:4, 
+  c(high_tr[12], high_r[12], exp(prof_int[2]), boot.ci[2,12]), 
+  length = 0.1, angle = 90, 
+  code = 3, col = "black", lwd = 2)
+```
+:::
+
+## Practical
+
+- Run through your version of the sockeye code and create confidence intervals for different parameters.
+- Compute residuals for this model?
+- Use `DHARMa` to calculate randomized quantile residuals?
+- Can you improve the model?
+
+```{r}
+#| echo: true
+#| eval: false
+
+res_dharma <- createDHARMa(
+  simulatedResponse = sim_matrix, ## Each column a new simulation
+  observedResponse = observed_y,  ## Observed data
+  fittedPredictedResponse = predicted_y,  ## Fitted values (mu)
+  integerResponse = FALSE
+)
+
+plot(res_dharma)
+```

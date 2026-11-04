@@ -1,0 +1,336 @@
+---
+title: "Writing a Likelihood Function"
+format:
+  revealjs:
+    theme: simple
+    slide-number: true
+    show-slide-number: all
+    progress: true
+    width: 1280
+    height: 720
+    embed-resources: true
+    code-line-numbers: true
+    highlight-style: github
+    scrollable: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
+---
+
+## Likelihood
+
+- Likelihood function describes the 'likelihood' of the parameters, $\boldsymbol{\theta}$, given the data, $X$,
+
+$$
+  L(\boldsymbol{\theta}|x)
+$$
+- Likelihood is the same as the joint density of the data, $f$,
+
+$$
+  f(X|\boldsymbol{\theta}) = f(x_1, \ldots, x_n)
+$$
+
+- Basic understanding of probability required
+
+## Probability Mass Function
+
+- Random variable $x$ is discrete 
+- Probability mass function $f(x)$ describes probability of r.v. $x$ taking on a specific value.
+- Requires that $f(x) \geq 0$ and $\sum_i f(x = i) = 1$.
+- Typical Functions: Binomial, Poisson, Negative Binomial
+  
+```{r}
+x <- 0:20
+fx <- dbinom(x, size = 20, prob = 0.25)
+plot(x, fx, ylab = "f(x)", xlab = "x", col = "black", lwd = 3, type = "h")
+sum(fx)
+```
+
+## Probability Density Function
+
+- Random variable $x$ is continuous
+- Probability density function $f(x)$
+- Describes a density, not a probability of an event.
+- $f(x) \geq 0$ and $\int_{-\infty}^{\infty} f(x)dx = 1$ 
+- Typical Functions: Normal, Student t, Gamma, Beta
+- Probability defined by some area under the curve, (CDF)
+
+$$
+  p(x \leq 1) = \int_{-\infty}^1 f(x)dx
+$$
+
+::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
+```{r}
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "100%"
+x <- seq(-5, 5, by = 0.01)
+fx <- dnorm(x, 0, 1)
+plot(x, fx, ylab = "f(x)", xlab = "x", type = "l")
+polygon(c(x[x <= 1], 1, 0), c(fx[x <= 1], 0, 0), col="blue", border=NA)
+```
+:::
+
+## Expectation
+
+- Expected value of $x$ (or mean) when discrete
+$$
+  \mathbb{E}(x) = \sum xp(x)
+$$
+```{r, echo = TRUE}
+  mean(rbinom(10000, size = 10, prob = 0.25))
+  sum((0:10)*dbinom(0:10, size = 10, prob = 0.25))
+```
+
+- Expected value of $x$ (or mean) when continuous
+$$
+  \mathbb{E}(x) = \int xf(x)dx
+$$
+```{r, echo = TRUE}
+  mean(rgamma(10000, 1, 2))
+  integrate(\(x){x*dgamma(x,1,2)}, lower=0, upper=Inf)$value
+```
+
+- Sample mean
+$$
+  \mathbb{E}(x) = \frac{\sum x_i}{n}
+$$
+
+## Variance
+
+- Variance is difference of squared expectation and expectation squared.
+$$
+  Var(x) = \mathbb{E}(x^2) - \mathbb{E}(x)^2.
+$$
+
+```{r, echo = TRUE}
+  var(rgamma(10000, 1, 2))
+  integrate(\(x){x^2*dgamma(x,1,2)}, lower=0, upper=Inf)$value - (1/2)^2
+```
+
+- Sample variance
+$$
+  Var(x) = \frac{(\sum x_i - \bar{x})^2}{n-1}
+$$
+
+## Joint Density
+
+- Some sample $\textbf{x}$, of size $n$
+- Assume $x_i \sim N(\mu, \sigma)$ and all are independent.
+- Then the joint density is
+$$
+\begin{aligned}
+  f(\textbf{x})  & = f(x_1, \ldots, f_n)\\
+  & = f(x_1)f(x_2) \cdots f(x_n)\\ 
+  & =  \prod_{i=1}^n f(x_i)
+\end{aligned}
+$$
+
+## Conditional Density
+
+- Some sample $\textbf{x}$, of size $n$
+- Assume $x_i|u \sim N(u + \mu, \sigma)$
+- $u \sim N(0, 1)$ is a random variable (e.g. random effect)
+- The $x$ values are not independent!
+$$
+  f(\textbf{x}) \neq \prod_{i=1}^n f(x_i)
+$$
+- However, conditional on the value of $u$, they are independent,
+$$
+  f(\textbf{x}|u) = \prod_{i=1}^n f(x_i|u)
+$$
+- Joint density can be written as
+$$
+  f(\textbf{x}) = \int f(\textbf{x},u)du = \int f(\textbf{x}|u)f(u)du
+$$
+
+## Likelihood
+
+- For parameters $\boldsymbol{\theta} = \{\mu, \sigma\}$
+- Assuming independence between observations $x_1, \ldots, x_n$
+
+$$
+L(\boldsymbol{\theta} | \textbf{x}) = \prod_{i=1}^n f(x_i)
+$$
+
+- Maximum likelihood estimation -- Find maximum values of parameters given the data.
+
+```{r}
+#| layout-ncol: 2
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "100%"
+
+x <- rnorm(100, 0.25, 2)
+ll <- function(mu_vector) {
+  sapply(mu_vector, function(m) {
+    sum(dnorm(x, mean = m, sd = 2, log = TRUE))
+  })
+}
+mu <- seq(-5, 5, 0.1)
+
+plot(mu, ll(mu), xlab = "mu", ylab = "Log Likelihood(mu)", type = "l")
+
+plot(mu, -ll(mu), xlab = "mu", ylab = "Negative Log-Likelihood", type = "l")
+```
+
+## Fitting a Likelihood in R
+
+- Maximum of likelihood is also maximum of log-likelihood
+- Maximization is the same as minimizing the negative.
+- Multiplying small numbers is bad.
+- $l(\boldsymbol{\theta}|\mathbf{x}) = \log(L(\boldsymbol{\theta}|\mathbf{x}))$
+
+
+```{r, echo = TRUE}
+  x <- rnorm(1000, 0, 5)
+  fx <- dnorm(x, 0, 5)
+  log(prod(fx))
+  sum(log(fx))
+```
+
+::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
+```{r}
+#| layout-ncol: 2
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "100%"
+
+x <- rnorm(100, 0.25, 2)
+ll <- function(mu_vector) {
+  sapply(mu_vector, function(m) {
+    sum(dnorm(x, mean = m, sd = 2, log = TRUE))
+  })
+}
+mu <- seq(-5, 5, 0.1)
+
+plot(mu, exp(ll(mu)), xlab = "mu", ylab = "Likelihood(mu)", type = "l")
+
+plot(mu, ll(mu), xlab = "mu", ylab = "Log-Likelihood(mu)", type = "l")
+```
+:::
+
+## Fitting a Likelihood in R
+
+- Remember that $\log(AB) = \log(A) + \log(B)$
+- We build the log-likelihood by summing over the log of each independent component of the likelihood.
+
+$$
+  \log(L(\boldsymbol{\theta}|\mathbf{x}) = \sum \log(f(x_i)).
+$$
+- In R this is best done vectorized. Loops are slow, especially when nested.
+- In C++ loops are very fast.
+
+```{r, echo = TRUE}
+  x <- rnorm(1000, 0, 5)
+  ll_vec <- \(a){
+    lfx <- dnorm(x, 0, 5, log = TRUE)
+    ll <- sum(lfx)
+    ll*a
+  }
+  ll_loop <- \(a){  
+    ll <- 0
+    for( i in 1:1000){
+      ll <- ll + dnorm(x[i], 0, 5, log = TRUE)
+    }
+    ll*a
+  }
+
+  ## First taste of RTMB... :)
+  ll_loopc <- RTMB::MakeTape(ll_loop, 1)
+  ll_vecc <- RTMB::MakeTape(ll_vec, 1)
+  
+  microbenchmark::microbenchmark(
+    vectorized = ll_vec(rnorm(1)),
+    looped = ll_loop(rnorm(1)),
+    looped_c = ll_loopc(rnorm(1)),
+    vectorized_c = ll_vecc(rnorm(1)),
+    times = 100
+  )
+```
+
+## Likelihood in R
+
+- Consider a sample of size 50 of $x \sim N(\mu = 2, \sigma = 5)$
+
+```{r}
+#| echo: true
+
+x <- rnorm(50, 2, 5)
+
+negloglik <- \(theta){
+  mu <- theta[1]
+  sigma <- theta[2]
+  ll <- -sum(dnorm(x, mu, sigma, log = TRUE))
+  return(-ll)
+}
+```
+
+- Problems with this code?
+
+## Link functions
+
+- Optimization typically wants no discontinuities in parameter space.
+- We know standard deviation is strictly positive $\sigma > 0$
+- $\log$ maps a positive number to $\{\infty, \infty\}$
+  * Inverse is $\exp$
+- If $p \in [0,1]$, then $p/(1-p) \in [0, \infty)$
+- $\alpha = \text{logit}(p) = \log(p/(1-p)) \in (-\infty, \infty)$
+  * Inverse is $p = 1/(1+\exp(-\alpha))$
+
+```{r}
+#| echo: true
+
+negloglik <- \(theta){
+  mu <- theta[1]
+  sigma <- exp(theta[2])
+  ll <- -sum(dnorm(x, mu, sigma, log = TRUE))
+  return(-ll)
+}
+```
+
+## Writing a Likelihood in RTMB
+
+```{r}
+#| echo: true
+
+library(RTMB)
+
+negloglik <- \(theta){
+  getAll(theta)
+  sigma <- exp(logsigma)
+  ll <- -sum(dnorm(x, mu, sigma, log = TRUE))
+  return(-ll)
+}
+
+pars <- list(mu = 0, logsigma = 0)
+negloglik(pars)
+obj <- MakeADFun(negloglik, pars)
+obj$fn(c(0,0))
+
+microbenchmark::microbenchmark(
+  R = negloglik(list(mu = rnorm(1), logsigma = rnorm(1))),
+  RTMB = obj$fn(rnorm(2))
+)
+```
+
+## Practical
+
+- Make your sockeye Ricker model run as an `RTMB` function
+- Can log productivity be any values?
+- Can carrying capacity be negative?
+- Note
+  * `getAll` attaches list to environment.
+  * Pass inputs as list of named variables
+  * `MakeADFun` creates TMB object
+  * Get to `obj = MakeADFun(negloglik, parameters)`
+  * Run `obj$fn()`
+
+## End of Module
+
+- Take home: 
+  * reminder of fundamental statistics
+  * write basic likelihoods in R
+  * basic numerical thoughts
+- Questions?
+- Quick Break before a practical session
