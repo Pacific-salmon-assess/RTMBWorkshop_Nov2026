@@ -1,0 +1,81 @@
+---
+title: "Writing Custom Functions in RTMB"
+format:
+  revealjs:
+    theme: simple
+    slide-number: true
+    show-slide-number: all
+    progress: true
+    width: 1280
+    height: 720
+    embed-resources: true
+    code-line-numbers: true
+    highlight-style: github
+    scrollable: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
+---
+
+## Write a Custom Distribution
+
+- `RTMB` doesn't have the distribution you want
+- Still want their simulation functionality
+- Example Poisson-Gamma Mixture with repeated counts within the mixture
+
+```{r}
+#| echo: true
+
+## Random generator with a single rate
+rpoisgamma <- function(n, size, prob){
+  lambda <- rgamma(1, size, prob/(1-prob))
+  return(rpois(n, lambda))
+}
+size = 5
+prob = 0.25
+x <- rpoisgamma(10, size, prob)
+
+## Distribution
+dpoisgamma <- function(x, size, prob, log = FALSE){
+  df <- function(theta){
+    -sum(dpois(x, exp(theta), log = TRUE)) - 
+        dgamma(exp(theta), size, prob/(1-prob), log = TRUE) - theta
+  }
+  tape <- MakeTape(df, 0)
+  dapprox <- tape$laplace(1)
+  negprob <- dapprox(numeric(0))
+  if(log) return(-negprob)
+  return(exp(-negprob))
+}
+
+negll <- function(pars){
+  getAll(pars)
+  r <- exp(logr)
+  p <- plogis(logitp)
+  
+  ll <- 0
+  for(i in 1:nrow(x)){
+    ll <- ll + sum(dpoisgamma(x[i,], size = r, prob = p, log = TRUE))
+  }
+  -ll
+}
+x <- NULL
+for( i in 1:10) x <- rbind(x, rpoisgamma(n = 10, size = 3, prob = 0.25))
+
+obj <- MakeADFun(negll, list(logr=0,logitp=0))
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+
+negll2 <- function(pars){
+  getAll(pars)
+  r <- exp(logr)
+  p <- plogis(logitp)
+  lambda <- exp(re)
+  ll <- sum(dgamma(re, r, p/(1-p), log = TRUE) + re)
+  for(i in 1:nrow(x)){
+    ll <- ll + sum(dpois(x[i,], lambda[i], log = TRUE))
+  }
+  -ll
+}
+obj2 <- MakeADFun(negll2, list(logr=0,logitp=0, re = numeric(nrow(x))), random = "re", silent = TRUE)
+
+```

@@ -1,0 +1,218 @@
+---
+title: "Adding Random Effects in RTMB"
+format:
+  revealjs:
+    theme: simple
+    slide-number: true
+    show-slide-number: all
+    progress: true
+    width: 1280
+    height: 720
+    embed-resources: true
+    code-line-numbers: true
+    highlight-style: github
+    scrollable: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
+---
+
+## RTMB Sockeye Ricker
+
+- Consider a model with a random effect for productivity,
+
+$$
+\begin{align}
+  \log(R_i/S_i) & =  \alpha_{s_i} + \beta_{s_i} S_i + \epsilon_i \\
+  \alpha_{s} & \sim N(\alpha_0, \eta) \\
+  \epsilon_i & \sim N(0, \sigma_{s_i}) \\
+  s & \in \{1,\ldots,n_{s}\}  
+\end{align}
+$$
+
+```{r}
+#| echo: false
+library(ggplot2)
+library(dplyr)
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox %>% left_join(stock, by = "PopID")
+sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
+sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup()
+```
+
+## Coding in RTMB
+
+```{r}
+#| echo: true
+library(RTMB)
+
+sox$stock <- as.numeric(factor(sox$PopName))
+nstocks <- max(sox$stock)
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2)
+)
+
+sox$logRS <- log(sox$recruits/sox$spawners)
+
+negll <- function(pars){
+  
+  getAll(pars, sox, warn = FALSE)
+  beta <- exp(logbeta)
+  
+  sigma <- exp(logsigma)
+  sigma_re <- exp(logsigma_re)
+  alpha_re <- re + alpha0
+
+  ADREPORT(alpha_re)
+  
+  mu <- alpha_re[stock] - beta[stock]*spawners_scaled
+  logRS <- OBS(logRS)
+  
+  ll <- sum(dnorm(re, 0, sigma_re, log = TRUE))
+  ll <- ll + sum(dnorm(logRS, mu, sigma[stock], log = TRUE))
+  
+  return(-ll)
+}
+
+obj <- MakeADFun(func = negll, parameters = parameters, silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+```
+
+## Fitting Random Effects
+
+- A random effect is an unobserved random variable in the model
+- We cannot do direct maximization on the joint likelihood
+- Options are:
+  * Use MCMC and sample the random effects
+  * Use the EM algorithm to find the expected values of the random effects and find the MLE of an objective function.
+  * Marginalize (integrate) out the unobserved random variables and maximize the 'marginal' likelihood.
+- RTMB (TMB) is built to marginalize  
+
+## Marginal Likelihood
+
+- To marginalize, need to integrate joint density is $f(\textbf{x}, \textbf{u})$,
+
+$$
+  f(\textbf{x}) = \int_{\Omega} f(\textbf{x} | \textbf{u})f(\textbf{u}) d\textbf{u}
+$$
+
+## Laplace Approximation
+
+- We approximate the density in terms of the random effects by a Taylor series expansion
+
+- Integral tricks allow us to approximate that as a Gaussian
+
+- Requires a smooth single peak to the likelihood distribution
+
+- Requires fast + accurate gradient/hessian computation
+
+- Likelihood theory tells us with more data the likelihood should become smoother and have a sharp peak.
+
+- Steps required are
+  * Maximize $f(\textbf{x}, \textbf{u})$ with respect to the random effects, $\textbf{u}$, with fixed parameter values of $\boldsymbol{\theta}$
+  * Compute Hessian and return approximate likelihood
+
+## Laplace Approximation Example 1
+
+::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
+```{r}
+#| echo: true
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "100%"
+
+## Equivalent to NB
+r <- 5
+prob <- 0.25
+lambda <- rgamma(1, r, prob/(1-prob))
+obs <- rpois(1, lambda)
+
+pois_gamma <- \(theta){
+  -dpois(obs, exp(theta[1]), log = TRUE) - dgamma(exp(theta[1]), theta[2], theta[3]/(1-theta[3]), log = TRUE) - theta[1]  ## Include Jacobian...
+}
+## Manual Laplace
+nb_approx <- function(r, prob) {
+  mle <- optimize(\(u){pois_gamma(c(u, r, prob))}, 0, lower = 0, upper = 100)
+  u_hat <- mle$minimum
+  H <- pracma::hessian(\(u){pois_gamma(c(u, r, prob))}, u_hat)
+  mle$objective - 0.5 * log(2 * pi) + 0.5 * log(drop(H))
+}
+
+nb_approx(3, 0.25)
+
+F <- MakeTape(pois_gamma, c(0,0, 0))
+nb_approxc <- F$laplace(1)
+nb_approxc(c(3, 0.25))
+-dnbinom(obs, 3, 0.25, log = TRUE)
+
+size <- seq(0.1, 10, 0.1)
+fapprox <- sapply(size, nb_approx, prob = 0.25)
+ftrue <- sapply(size, dnbinom, x = obs, prob = 0.25, log = TRUE)
+plot(size, exp(-fapprox), type = "l", ylab = "L(size)")
+lines(size, exp(ftrue), type = "l", col = 'red', lty = 2)
+```
+:::
+
+## Laplace Approximation Example 2
+
+```{r}
+#| echo: true
+
+
+u <- rnorm(1, 0, 2 )
+x <- rnorm(5, 1+u, 1.5)
+
+nll_joint <- function(theta) {
+  -sum(dnorm(x, theta[1] + theta[2], theta[3], log = TRUE)) - dnorm(theta[1], 0, theta[4], log = TRUE) 
+}
+
+## Manual Laplace
+nll_approx <- function(mu, sd, sdre) {
+  mle <- optimize(\(u){nll_joint(c(u, mu, sd, sdre))}, 0, lower = -100, upper = 100)
+  u_hat <- mle$minimum
+  H <- pracma::hessian(\(u){nll_joint(c(u, mu, sd, sdre))}, u_hat)
+  mle$objective - 0.5 * log(2 * pi) + 0.5 * log(as.numeric(H))
+}
+
+## RTMB approx:
+nll_rtmb <- MakeTape(nll_joint, c(0,0,1,1))
+nll_approxc <- nll_rtmb$laplace(1)
+
+## Known marginal distribution
+nll_exact <- function(theta) {
+  Sigma <- matrix(theta[3]^2, ncol = length(x), nrow = length(x)) + theta[2]^2*diag(length(x))
+  -dmvnorm(x, mu = rep(theta[1], length(x)), Sigma = Sigma, log = TRUE)
+}
+
+# Test it:
+nll_approx(1, 1.5, 2)
+nll_approxc(c(1, 1.5, 2))
+nll_exact(c(1, 1.5, 2))
+```
+
+## Back to Sockeye
+
+- RTMB makes it really easy to compute the marginalize likelihood.
+
+- They even make it easy to do a basic check if the laplace approximation is working.
+
+```{r}
+#| echo: true
+
+obj <- MakeADFun(func = negll, parameters = parameters, random = "re", silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+check <- checkConsistency(obj)
+s <- summary(check)
+s$marginal$p.value
+```
+
+```{r}
+#| eval: FALSE
+resids <- oneStepPredict(obj, discrete=FALSE, trace=FALSE)
+qqnorm(resids$res); abline(0,1)
+```

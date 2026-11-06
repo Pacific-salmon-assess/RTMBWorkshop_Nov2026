@@ -37,16 +37,19 @@ execute:
 ## Course Structure
 
 - Can't code if you don't understand model
-- Focus on understanding a model, then coding it in R
+- Focus on the theory and why RTMB is important, then coding it
 - RTMB is very simple if you know how to code a likelihood in R
-- Will focus on understanding in the mornings and practical coding in the afternoon
+- With great power comes great responsibility.
+  * In RTMB you can do a lot but that doesn't mean you should
+  * Need to understand the statistical theory to stay 'safe'
+
 
 ## Learning Outcomes
 
-- Understand how to fit a custom likelihood and report on it
-- Basic programming in RTMB
-- Fitting hierarchical models
-- RTMB specific applications
+- Understand the basic theory around likelihoods and optimization
+- Learn to to fit a custom likelihood and report on it in RTMB
+- Use RTMB to fit hierarchical models
+- RTMB specific coding tricks
 
 ## Outline Day 1
 
@@ -65,3 +68,8 @@ execute:
 3. (11:00 – 11:50) Writing helper functions and atomics (e.g. Lambert W). Best coding practices. 
 4. (13:00 – 16:00) Practice writing complex likelihood functions in RTMB 
 
+## Precourse Assignment
+
+- We will go over all the technical details to fully understand this assignment.
+- You will need to have access to the data and code that fits the basics of a stock recruitment model for today.
+- Let's take a few minutes to make sure everyone has some running code.

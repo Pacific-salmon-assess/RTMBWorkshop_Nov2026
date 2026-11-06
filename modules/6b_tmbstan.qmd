@@ -1,0 +1,167 @@
+---
+title: "Custom Distribution"
+author: "Paul van Dam-Bates"
+format: 
+  html:
+    self-contained: true
+---
+
+## Introduction
+
+## Data
+
+We will start with some sockeye stock recruit data from the Fraser River. There are a total of 19 stocks, values are in millions of fish, and note that these are not necessarily official numbers and may be updated after 2020. Let's load the data, which may have a different path depending on how you have configured your R console, or Rstudio.
+
+```{r, warning = FALSE, eval = FALSE}
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox |> merge(stock, by = "PopID")
+
+library(ggplot2)
+ggplot(data = sox, aes(x = log(spawners), y = log(recruits), colour = PopName)) + 
+  geom_point() + 
+  theme_bw() + 
+  xlab("Log Spawners") + 
+  ylab("Log Recruits")
+```
+
+## Model 
+
+A Ricker stock recruit model relates the number of successfully returning fish (recruits) to the number of spawners, accounting for productivity and mortality in the term $\alpha$ and carrying capacity in $\gamma$. Effective female spawners, $S_{kt}$, in brood year $t$ and from stock $k$, produce $R_{kt}$ recruits. Recruits are estimated based on escapement, fishery removals, and en-route losses, combined over multiple return years, or age classes. For simplicity we will assume that each stock has their own productivity and carrying capacity. 
+
+$$
+  R_{kt} = S_{kt} \exp(\alpha_{k} -\gamma_k S_{k,t}),
+$$
+where $\alpha_{k}$ is log productivity and $\gamma_k$ is carrying capacity. This is usually written as the log recruits per spawners, with uncertainty added as white noise with standard deviation $\sigma$, $\epsilon_{k,t} \sim N(0,\sigma^2)$,
+
+$$
+  \log(R_{kt}/S_{kt}) =\alpha_{k} - \gamma_k S_{k,t} + \epsilon_{k,t}.
+$$
+
+## Fitting the Model
+
+The log Ricker model above looks a lot like a linear model. To make this explicit, we define a design matrix $X$, that relates each observation, $i \in \{1,\ldots,n\}$, to the covariates. We define the linear predictors as $\boldsymbol{\beta} = \{\alpha, \gamma\}$, and then rewrite explicitly as a linear model,
+
+$$
+  \log(R_{i}/S_{i}) = \beta_0 + \beta_1 s_i + \epsilon_{i}.
+$$
+In this case, the design matrix $X$ is $X_{i0}=1$ and $X_{i1} = S_i$. If you remember your linear algebra, then the dot product is
+
+$$
+  \beta_0 + \beta_1 s_i = X_i \cdot \boldsymbol{\beta}.
+$$
+An intercept term in the design matrix becomes a column of just 1. Coding a factor such as `~PopName` results in a matrix with columns equal to the number of stocks, with an intercept of all ones, and the other columns 1, or 0, depending on if the observation contains the related population. For three stocks, the first observation being stock 1, second, stock 2, and third stock 3, the design matrix is
+
+$$
+X = \begin{bmatrix} 
+1 & 0 & 0 \\ 
+1 & 1 & 0 \\ 
+1 & 0 & 1 
+\end{bmatrix}
+$$
+This defines a contrast where the coefficient $\beta_0$ is the intercept terms and $\beta_1$ and $beta_2$ are how much the stocks 2 and 3 differ from the intercept, or stock 1. We might want to remove the intercept so that we fit a separate log productivity for each, which is written as `~0+PopName`.
+
+$$
+X = \begin{bmatrix} 
+1 & 0 & 0 \\ 
+0 & 1 & 0 \\ 
+0 & 0 & 1 
+\end{bmatrix}
+$$
+For this stock recruit model, each coefficient will represent the log productivity of that particular stock. To allow for a different curve per stock we write in R `X = model.matrix( ~ 0 + PopName + spawners:PopName, data = sox)`. 
+
+To efficiently compute the vector of expected log recruits-per-spawner, $\boldsymbol{\mu}$, we can use matrix multiplication,
+
+$$
+  \boldsymbol{\mu} = X \boldsymbol{\beta}.
+$$
+An example of using `model.matrix` to create a design matrix and compute the expected log recruits-per-spawner is shown below.
+
+```{r, eval = FALSE}
+  X <- model.matrix(~0 + PopName + spawners:PopName, data = sox)
+  npar <- ncol(X)
+  beta <- rnorm(npar)
+
+  ## Version 1: Matrix multiplication
+  mu <- X %*% beta
+  dim(mu)
+  
+  ## Version 2: Looping
+  mu <- numeric(nrow(X))
+  for(i in 1:nrow(X)) mu <- sum(X[i,] * beta)
+```
+
+
+The likelihood of these $n$ observations, and parameters, $\boldsymbol{\theta} = \{\boldsymbol{\beta}, \sigma\}$, is written as 
+
+$$
+  L(\boldsymbol{\theta}|R,S) = \prod_{i=1}^n N(\log(R_i/S_i), X_i \cdot \boldsymbol{\beta}, \sigma^2),
+$$
+where $N()$ is the normal distribution.
+
+The likelihood is just the joint probability density of the data, but termed as the likelihood of the parameters given the data, which is what we maximize to find the MLE. Note that for two random variables, $x_1$ and $x_2$, the joint probability density if they are independent is
+
+$$
+  f(x_1, x_2) = f(x_1) f(x_2).
+$$
+We rely on this fact to define the above likelihood as the product of the probability density of each individual observation. We can fit the model using the `lm` function in R as follows.
+
+```{r, eval = FALSE}
+sox <- sox |> within(logRS <- log(recruits/spawners))
+fit <- lm(logRS ~ 0 + PopName + spawners:PopName, data = sox)
+# summary(fit)
+```
+
+## Custom Likelihood Function
+
+To write our own version of `lm` to fit this model we need to know a few things. 
+
+1. Computation must occur on the log scale. This is because multiplying lots of small probabilities together creates a very small number, which leads to numerical underflow. On the log scale, multiplication becomes summation, and small positive numbers become large negative numbers.
+$$
+  \log(AB) = \log(A) + \log(B)
+$$
+1. Numerical optimization functions typically find the minimum. If we work with the negative log likelihood then the minimum is actually the maximum.
+1. The optimizer will expect a single input of the parameters as a vector.
+1. The coefficient terms can be any number but the standard deviation $\sigma$ is strictly positive. This requires a transformation, typically fitting the parameter on the $log$ scale, or $\nu = \log(\sigma)$, to ensure that it is estimated correctly.
+
+Here is a basic example to help you get started writing your own custom likelihood. Consider a sample of $n=50$ taken from a normally distributed population,
+$$
+x_i \sim N(\mu, \sigma^2).
+$$
+We will find the MLE of the mean, $\mu$ and standard deviation, $\sigma$, writing a custom function that returns the negative log likelihood of the 50 observations.
+
+```{r, eval = FALSE}
+set.seed(1)
+n <- 50
+x <- rnorm(n)
+
+fit0_lm <- lm(x~1)
+
+negll <- function(pars, data){
+  mu <- pars[1]
+  sigma <- exp(pars[2])
+  -sum(dnorm(data, mu, sigma, log = TRUE))
+}
+
+pars_init <- c(0,0)
+fit0 <- nlminb(pars_init, negll, data = x)
+```
+
+The function `nlmbin` searches the function to find the minimum, but other optimizers are also fine (e.g. `optim`). If we compare our estimates with `lm` we find that $\mu$ is the same but $\sigma$ is different. This is because the MLE of the variance term is actually biased and is generally corrected for bias in the `lm` function. To match them we must do bias correction for $a$ parameters (1 in the example below) $n/(n-a)$.
+
+```{r, eval = FALSE}
+fit0$par[1] - mean(x) ## Should be the same...
+fit0$par[1] - coef(fit0_lm)
+exp(fit0$par[2]) - sd(x) ## Different!!
+exp(fit0$par[2]) - sigma(fit0_lm)
+exp(fit0$par[2])*sqrt(n/(n-1)) - sigma(fit0_lm) ## Same
+```
+
+
+## Preworkshop Assignment
+
+Please write a general negative log likelihood function for a stock recruit model that can take any covariate input for coefficients $\boldsymbol{\beta}$. Find the MLE and compare your results with `lm`. 
+
+Explore if it finds the same coefficient values exactly. How can you fix that? Can you let the standard deviation vary per each stock as well?
+
+We will build on this code throughout the workshop so it's important that you understand how this works in R and is written in a way that will help you generalize your code to RTMB.

@@ -19,25 +19,71 @@ execute:
 
 ## Derivatives
 
-- You will need a basic understanding of calculus in this course.
+- Derivatives are core to RTMB and optimization
+- A derivative is the the slope (or straight line) that lies tangent to a point on a curve
+- Describes the rate of change of the function at that point.
 
-- A derivative is the rate of change of a function $f$ with respect to $x$,
+::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
+![](../figures/derivative_limit.gif){fig-align="center" width="75%"}
+:::
 
-$$
-  \frac{df}{dx} = \lim_{\Delta \to 0} \frac{f(x + \Delta) - f(x)}{\Delta}
-$$
-- For a straight line, the derivative is constant,
+```{r}
+#| eval: false
 
-$$
-\begin{aligned}
-  f(x) &= 3x\\
-  \frac{df}{dx} &= 3
-\end{aligned}
-$$
+library(ggplot2)
+library(gganimate)
+
+# Define the function f(x) = x^2 and its derivative at x = 1
+f <- function(x) { dnorm(x, 3, 1)  }
+df <- function(x, d){(f(x+d) - f(x-d))/(2*d)}
+make_line <- function(x, d, x0){
+  f0 <- f(x0)
+  y = df(x0, d)*(x-x0) + f0
+  return(data.frame(x = x, y = y, d = d))
+}
+x0 <- 3.5
+f0 <- f(x0)
+x <- seq(x0-0.5, x0+0.5, 0.001)
+d <- c(2, 1, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.01)
+out <- do.call("rbind", lapply(d, FUN = function(z){make_line(x, z, x0)}))
+out$dval <- out$d
+out$d <- as.numeric(factor(out$d, levels = d))
+
+# Build the ggplot
+p <- ggplot() +
+  # Base function curve
+  stat_function(fun = f, color = "blue", linewidth = 1.2, xlim = c(2, 5)) +
+  geom_line(data = out, aes(x = x, y = y, group = d), color = "red", linetype = "dashed", linewidth = 1) +
+  geom_point(data = out, aes(x = x0, y = f0), color = "blue", size = 2) +
+  geom_point(data = out, aes(x = x0 + dval, y = f(x0 + dval)), color = "red", size = 4) +
+  geom_point(data = out, aes(x = x0 - dval, y = f(x0 - dval)), color = "red", size = 4) +
+  # Labels and title showing current h and slope
+  labs(
+    title = "Approximate Derivative: d -> {closest_state}",
+    x = "x",
+    y = "f(x)"
+  ) +
+  theme_minimal() +
+  transition_states(d, transition_length = 1, state_length = 1)
+  
+animate(p, nframes = 100, fps = 10, 
+  renderer = gifski_renderer("derivative_limit.gif"))
+```
 
 ## Derivatives
 
-- For curves, the derivative changes depending on the value of $x$, 
+- A derivative is the rate of change of a function $f$ with respect to $x$, for some small $\Delta$,
+
+$$
+  \frac{df}{dx} \approx \frac{f(x + \Delta) - f(x)}{\Delta}
+$$
+- Calculus definition is when $\lim_{\Delta \to 0}$
+
+- The maximum/minimum is when the slope is flat, or $\frac{df}{dx} = 0$
+
+## Derivatives
+
+- The derivative changes depending on the value of $x$, 
 
 $$
 \begin{aligned}
@@ -46,7 +92,7 @@ $$
 \end{aligned}
 $$
 
-- The maximum/minimum is when the slope is flat, or $\frac{df}{dx} = 0$
+- Optimization is simply finding where the derivative is zero,
 
 $$
 \begin{aligned}
@@ -56,7 +102,7 @@ $$
     x & = 3.5
 \end{aligned}
 $$
-- We can numerically find the maximum in R.
+- We can do this numerically in R.
 
 ```{r}
 #| echo: true
@@ -71,7 +117,7 @@ max_x$maximum
 
 ## Gradient
 
-- Derivative in multiple dimensions (referred to as 'parital derivatives')
+- Derivative in multiple dimensions (referred to as 'partial derivatives') and $df$ becomes $\partial f$,
 
 $$
   \frac{\partial f(x,y)}{x} = \lim_{\Delta \to 0} \frac{f(x + \Delta, y) - f(x,y)}{\Delta}.
@@ -82,12 +128,16 @@ $$
   \nabla f(x,y) = \Big\{ \frac{\partial f(x,y)}{x}, \frac{\partial f(x,y)}{y} \Big\}
 $$
 
-- Minimization/maximization is where all partial derivatives are zero.
+- Minimization/maximization is where gradient is zero (i.e. all partial derivatives are zero)
 
 ## Second Derivative
 
 - Second derivatives tell us the rate of change of the derivative.
 - Simply the derivative of the derivative $\frac{d^2f}{dx^2}$
+
+$$
+  \frac{d^2f}{dx^2} \approx \frac{f(x+\Delta) - 2f(x) + f(x-\Delta)}{\Delta^2}
+$$
 
 - Identify inflection point:
   * *Minimum* Positive (Increasing at an increasing rate) 
@@ -124,7 +174,7 @@ $$
 ## Gradients in R
 
 - Finite differences to compute the derivative
-- Compute function at nearby points and compute slope,
+- Compute function at nearby points and compute slope (central difference),
 $$
   \frac{\partial f}{\partial x} \approx \frac{f(x+\Delta, y) - f(x-\Delta,y)}{2\Delta}.
 $$
