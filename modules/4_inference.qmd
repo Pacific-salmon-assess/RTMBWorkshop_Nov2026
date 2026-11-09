@@ -56,10 +56,10 @@ obj <- MakeADFun(func = negll, parameters = parameters, silent = TRUE)
 
 ## Find MLE
 
+- Find minimum negative log likelihood
+- Use `nlminb` by default and pass initial values, function, and gradient.
+
 ```{r}
-#| fig-width: 5
-#| fig-height: 4
-#| out-width: "100%"
 #| echo: true
 
 par_init <- obj$par + rnorm(length(obj$par))
@@ -174,9 +174,21 @@ $$
   V(g(\widehat{\boldsymbol{\theta}})) = \nabla g V(\widehat{\boldsymbol{\theta}}) \nabla g'.
 $$
 
+- Showing to peak in 'black box' of how RTMB does this.
+
 - For our example above:
-  * $g(\alpha) = \alpha$ and $g'(\alpha) = 1$
-  * $g(log \beta) = \exp(log \beta)$ and $g'(\log \beta) = \exp(\log \beta) = \beta$
+
+\begin{align}
+  g(\alpha) & = \alpha \\
+  g'(\alpha) & = 1
+\end{align}
+
+\begin{align}
+  g(\log \beta) & = \exp(\log \beta) = \beta \\
+  g'(\log \beta) & = \exp(\log \beta) = \beta 
+\end{align}
+
+- Code it in R and compare with RTMB
 
 ::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
 ```{r}
@@ -351,3 +363,14 @@ res_dharma <- createDHARMa(
 
 plot(res_dharma)
 ```
+
+## End of Module
+
+- Take home: 
+  * RTMB does not require many changes to do maximum likelihood estimation
+  * Lots more to think about than using a function in R like `lm`
+  * Can use `REPORT` and `ADREPORT` to get key values
+  * Confidence intervals can be a little tricky, transform the CI or bootstrap/profile.
+
+- Questions?
+

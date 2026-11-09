@@ -21,6 +21,8 @@ Useful things to know about programming custom functions in `RTMB`
 
 - Check if being used by an `RTMB` function or in base R: `ad_context()`
 ```{r}
+library(RTMB)
+
 fun <- \(x){
   if(!RTMB:::ad_context()) print("This is called in R!")
   x*3
@@ -52,7 +54,7 @@ $$
 \end{align}
 $$
 
-Make a random number generator by drawing from Dirichlet and then Multomial.
+Make a random number generator by drawing from Dirichlet and then multinomial.
 
 ```{r}
 #| echo: true
@@ -64,13 +66,15 @@ Make a random number generator by drawing from Dirichlet and then Multomial.
 rdirmulti <- function(n, size, alpha) {
 
   # Draw n sets of theta from Dirichlet(alpha)
-  theta <- rdirichlet(n, alpha)
+  # theta <- rdirichlet(n, alpha)
 
   # Draw multinomial counts
   nalpha <- length(alpha)
   counts <- matrix(0, nrow = n, ncol = nalpha)
   for( i in 1:n ){
-    counts[i,] <- rmultinom(1, size = size, prob = theta[i,])
+    theta <- rgamma(length(alpha), 1, alpha)
+    theta <- theta/sum(theta)
+    counts[i,] <- rmultinom(1, size = size, prob = theta)
   }  
   if(n==1) return(drop(counts)) # return as vector
   counts
@@ -134,12 +138,12 @@ obj$fn()
 obj$gr()
 obj$simulate(c(0,1,2))
 
-osa_res <- oneStepPredict(
-  obj = obj,
-  observation.name = "x",
-  method = "oneStepGeneric",    # Best suited for discrete multivariate data
-  discrete = TRUE
-)
+# osa_res <- oneStepPredict(
+#   obj = obj,
+#   observation.name = "x",
+#   method = "oneStepGeneric",    # Best suited for discrete multivariate data
+#   discrete = TRUE
+# )
 
 ```
 

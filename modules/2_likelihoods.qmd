@@ -28,7 +28,7 @@ $$
 - Likelihood is the same as the joint density of the data, $f$,
 
 $$
-  f(X|\boldsymbol{\theta}) = f(x_1, \ldots, x_n)
+  f(X) = f(x_1, \ldots, x_n)
 $$
 
 - Basic understanding of probability required
@@ -39,16 +39,19 @@ $$
 - Probability mass function $f(x)$ describes probability of r.v. $x$ taking on a specific value.
 - Requires that $f(x) \geq 0$ and $\sum_i f(x = i) = 1$.
 - Typical Functions: Binomial, Poisson, Negative Binomial
-  
+
+::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
 ```{r}
 #| echo: true
+#| out-width: "60%"
+#| fig-align: center
 
 x <- 0:20
 fx <- dbinom(x, size = 20, prob = 0.25)
 plot(x, fx, ylab = "f(x)", xlab = "x", col = "black", lwd = 3, type = "h")
 sum(fx)
 ```
-
+:::
 
 ## Probability Density Function
 
@@ -65,13 +68,15 @@ $$
 
 ::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
 ```{r}
-#| fig-width: 5
-#| fig-height: 4
-#| out-width: "100%"
+#| out-width: "60%"
+#| echo: true
+#| fig-align: center
+
 x <- seq(-5, 5, by = 0.01)
 fx <- dnorm(x, 0, 1)
 plot(x, fx, ylab = "f(x)", xlab = "x", type = "l")
 polygon(c(x[x <= 1], 1, 0), c(fx[x <= 1], 0, 0), col="blue", border=NA)
+sum(fx*0.01)
 ```
 :::
 
@@ -97,9 +102,11 @@ $$
   L(p|\textbf{x}) = f(x_1) \cdots f(x_{30}).
 $$
 
-::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
+::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
 ```{r}
+#| out-width: "60%"
 #| echo: true
+#| fig-align: center
 
 x <- rbinom(30, size = 20, prob = 0.25)
 p <- seq(0, 1, 0.01)
@@ -121,9 +128,8 @@ $$
 ::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
 ```{r}
 #| echo: true
-#| fig-width: 5
-#| fig-height: 4
-#| out-width: "100%"
+#| out-width: "60%"
+#| fig-align: center
 
 x <- rnorm(30, mean = 3, sd = 0.75)
 mu <- seq(2.6, 3.4, 0.1)
@@ -138,7 +144,7 @@ filled.contour(
   color.palette = terrain.colors,
   xlab = expression(mu),
   ylab = expression(sigma),
-  main = "Filled Log-Likelihood Contour Map"
+  main = "Likelihood Contour Map"
 )
 
 ```
@@ -151,14 +157,17 @@ filled.contour(
 - Assume $x_i|u \sim N(u + \mu, \sigma)$
 - $u \sim N(0, 1)$ is a random variable (e.g. random effect)
 - The $x$ values are not independent!
+
 $$
   f(\textbf{x}) \neq \prod_{i=1}^n f(x_i)
 $$
 - However, conditional on the value of $u$, they are independent,
+
 $$
   f(\textbf{x}|u) = \prod_{i=1}^n f(x_i|u)
 $$
 - Joint density can be written as
+
 $$
   f(\textbf{x}) = \int f(\textbf{x},u)du = \int f(\textbf{x}|u)f(u)du
 $$
@@ -167,14 +176,11 @@ $$
 
 - How we write hierarchical models, for some group $j$,
 
-$$
 \begin{align}
   x_{i} & = \mu + u_{j} + \epsilon_i \\
   u_j & \sim N(0, \sigma_u^2) \\
   \epsilon_i & \sim N(0, \sigma^2)
-  
 \end{align}
-$$
 
 - Observations within a group $j$ are not independent.
 - Conditional on the value of the random effect $u_j$ they are!
@@ -369,4 +375,3 @@ microbenchmark::microbenchmark(
   * write basic likelihoods in R
   * basic numerical thoughts
 - Questions?
-- Quick Break before a practical session

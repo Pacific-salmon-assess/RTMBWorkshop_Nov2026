@@ -24,7 +24,7 @@ execute:
 - Describes the rate of change of the function at that point.
 
 ::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
-![](../figures/derivative_limit.gif){fig-align="center" width="75%"}
+![](../figures/derivative_limit.gif){fig-align="center" width="50%"}
 :::
 
 ```{r}
@@ -77,6 +77,7 @@ animate(p, nframes = 100, fps = 10,
 $$
   \frac{df}{dx} \approx \frac{f(x + \Delta) - f(x)}{\Delta}
 $$
+
 - Calculus definition is when $\lim_{\Delta \to 0}$
 
 - The maximum/minimum is when the slope is flat, or $\frac{df}{dx} = 0$
@@ -122,6 +123,7 @@ max_x$maximum
 $$
   \frac{\partial f(x,y)}{x} = \lim_{\Delta \to 0} \frac{f(x + \Delta, y) - f(x,y)}{\Delta}.
 $$
+
 - Gradient is the vector of the partial derivatives,
 
 $$
@@ -150,7 +152,9 @@ $$
   \frac{d^2f}{dx^2} & = -2
 \end{aligned}
 $$
+
 - Can tell that this polynomial is 'concave' or faces downward.
+
 - Therefore, we know that when $\frac{df}{dx} = 0$ we have found the maximum!
 
 ## Hessian Matrix
@@ -178,6 +182,8 @@ $$
 $$
   \frac{\partial f}{\partial x} \approx \frac{f(x+\Delta, y) - f(x-\Delta,y)}{2\Delta}.
 $$
+- Numerical error can be significant
+- Computation is slow due to the number of different calls to the function
 
 ```{r}
 #| echo: true
@@ -213,6 +219,7 @@ cat("Number of times f is called by finite differences:", count, "\n")
 
 library(RTMB)
 
+# f <- \(x){ 3-3*x - (x-5)^2}
 fc <- RTMB::MakeTape(f, 0)    ## Evaluates in C++
 fc$print()
 ```
@@ -234,6 +241,8 @@ plot(G, vertex.size = 17, layout = igraph::layout_as_tree)
 
 
 ## Gradients in RTMB
+
+- AD is faster and more accurate than finite differences
 
 ```{r}
 #| echo: true
@@ -422,10 +431,9 @@ lines(c(10, est2$par), c(-negloglik(10), -est2$obj), col = 'red', lty = 2, lwd =
 
 ::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
 ```{r}
-#| fig-width: 5
-#| fig-height: 4
-#| out-width: "100%"
+#| out-width: "65%"
 #| echo: true
+#| fig-align: "center"
 
 par_init <- obj$par + rnorm(length(obj$par))
 mle <- nlminb(obj$par, obj$fn, obj$gr)
@@ -433,3 +441,11 @@ plot(t(obj$gr(mle$par)), ylab = "gr", xlab = "index")
 abline(h = 0, col = 'red', lty = 2)
 ```
 :::
+
+## End of Module
+
+- Take home: 
+  * Gradient is critical for optimization
+  * Need Hessian to check optimization and compute variance
+  * RTMB makes it really easy and fast to compute gradients
+- Questions?

@@ -1,0 +1,147 @@
+---
+title: "Multinomial OSA Example"
+format: 
+  html:
+    self-contained: true
+---
+
+Simulate some multinomial data with 5 categories.
+
+```{r}
+#| echo: true
+
+library(RTMB)
+
+dat <- list()
+p_true <- c(0.1,0.5,0.2,0.05,0.15)
+np <- 5
+size <- 15
+dat$X <- rmultinom(100, size = size, prob = p_true)
+```
+
+We make inference on the multivariate logit transformed $\boldsymbol{\alpha}$, not $\textbf{p}$. This is unique as we remove a parameter, as given 4 of the 5 proportions, we know the 5 $p_5 = 1-\sum_{i=1}^4 p_i$. One option for transformation is the multivariate logit,
+
+$$
+  \boldsymbol{\alpha} = g(\textbf{p}) = \{ \log(p_1/(1-p_5), \dots,  \log(p_4/(1-p_5)\}.
+$$
+The inverse of this function is then,
+
+$$
+  \textbf{p} = g^{-1}(\boldsymbol{\alpha}) = \Big\{ \frac{\exp(\alpha_1)}{1+\sum  \exp(\alpha_i)},\ldots, \frac{\exp(\alpha_4)}{1+\sum \exp(\alpha_i)}, \frac{1}{1+\sum \exp(\alpha_i)} \Big\}
+$$
+
+Coding this transformation:
+
+```{r}
+#| echo: true
+
+mlogit <- function(p){
+  np <- length(p)
+  log(p[1:(np-1)]/p[np])
+}
+
+imlogit <- function(alpha){
+  expalpha <- exp(c(alpha, 0))
+  expalpha/sum(expalpha)
+}
+```
+
+Fit the multinomial model and compute the Pearson residuals within the code.
+
+```{r}
+#| echo: true
+
+library(RTMB)
+
+## One less parameter as they have to sum to 1
+par <- list(alpha = numeric(np-1))
+
+nll <- function (par){
+  getAll(par, dat)
+  X <- OBS(X)  
+  X_raw <- dat$X
+
+  p <- imlogit(alpha)
+  ll <- 0
+  ## Note can't use ncol(X) as when simulating OSA it isn't a matrix...
+  ## Pearson residuals
+  res <- matrix(0, ncol = 100, nrow = np)
+  
+  for(i in 1:100){
+    ll <- ll + dmultinom(X[,i], prob=p, log=TRUE)
+    res[,i] <- ( X_raw[,i]-size*p )/( sqrt(size*p*(1-p)) )    
+  }
+  REPORT(res)
+  -ll
+}
+
+obj <- MakeADFun(nll, par, silent = TRUE)
+fit <- nlminb (obj$par, obj$fn, obj$gr)
+
+## Report Pearson Residuals
+pearson <- obj$report()$res
+```
+
+Now let's use RTMB to get the OSA residuals
+
+```{r}
+#| echo: true
+
+## One step ahead simulation:
+r <- oneStepPredict(obj, method = "oneStepGeneric", observation.name = "X",
+  discrete = TRUE, discreteSupport = 0:size, trace = FALSE)
+osa <- as.matrix(r$residual, nrow = np, ncol = 100)
+```
+
+Now we will compute the randomized quantile residuals assuming independence between each observation. Then do the same thing conditioning on the previous observations, which is equivalent to the OSA residuals.
+
+For the multinomial distribution, a single observation is binomially distributed.
+
+```{r}
+#| echo: true
+
+## Randomized Quantile Residuals: Marignal CDF is binomial.
+pest <- imlogit(fit$par)
+rqr <- NULL
+for(j in 1:np){
+  pbin <- pbinom(dat$X[j,]-1, size = size, prob = pest[j])
+  pbineq <- pbinom(dat$X[j,], size = size, prob = pest[j])
+  pq <- runif(ncol(dat$X), pbin, pbineq)
+  rqr <- rbind(rqr, qnorm(pq))
+}
+
+## Ordered version that is the same as OSA:
+## Randomized Quantile Residuals: Conditional CDF is binomial.
+osa_manual <- NULL
+psum <- 1
+Xsum <- numeric(nrow(dat$X))
+for(j in 1:(np-1)){
+  pless <- pbinom(dat$X[j,]-1, size = size - Xsum, prob = pest[j]/psum)
+  peq <- pbinom(dat$X[j,], size = size - Xsum, prob = pest[j]/psum)
+  pq <- runif(ncol(dat$X), pless, peq)
+  osa_manual <- rbind(osa_manual, qnorm(pq))
+  Xsum <- Xsum + dat$X[j,]
+  psum <- psum - pest[j]
+}
+
+```
+
+Plot them all to compare
+
+```{r}
+#| echo: true
+
+par(mfrow = c(1,4))
+qqnorm(pearson, main = "Pearson Residuals (QQ)")
+qqline(pearson)
+
+qqnorm(rqr, main = "RQR Residuals (QQ)")
+qqline(rqr)
+
+qqnorm(osa[-np,], main = "OSA Residuals (QQ)")
+qqline(osa[-np,])
+
+qqnorm(osa_manual, main = "Manual OSA Residuals (QQ)")
+qqline(osa_manual)
+
+```

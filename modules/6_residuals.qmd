@@ -1,0 +1,251 @@
+---
+title: "Computing Residuals"
+format:
+  revealjs:
+    theme: simple
+    slide-number: true
+    show-slide-number: all
+    progress: true
+    width: 1280
+    height: 720
+    embed-resources: true
+    code-line-numbers: true
+    highlight-style: github
+    scrollable: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
+---
+
+## Computing Residuals
+
+- Classic residuals for continuous random variables (e.g. linear model)
+
+$$
+  r = \text{observed} - \text{expected}
+$$
+
+- Pearson residuals for GLMs, but shouldn't really use them...
+
+$$
+  r = \frac{\text{observed} - \text{expected}}{\sqrt{\text{expected}}}
+$$
+
+- Randomized Quantile Residuals
+  * considered always an improvement for GLM
+  * transform response variable to CDF $F(y|\widehat{\boldsymbol{\theta}})$
+  * for discrete random variable draw uniform $[F(y-1|\widehat{\boldsymbol{\theta}}), F(y|\widehat{\boldsymbol{\theta}})]$
+  * convert to real line by inverse standard normal
+
+- One Step Ahead Residuals
+  * RQR but account for correlation
+  * Easy to do in RTMB
+  * Becoming common in fisheries
+
+## RTMB Sockeye Ricker
+
+- Consider a model with a temporal random effect
+
+$$
+\begin{align}
+  \log(R_i/S_i) & =  \alpha_{s_i} + u_t + \beta_{s_i} S_i + \epsilon_i \\
+  \alpha_{s} & \sim N(\alpha_0, \eta^2) \\
+  \epsilon_i & \sim N(0, \sigma_{s_i}^2) \\
+  u_t & \sim N(\phi u_{t-1}, \gamma^2) \\
+  u_0 & \sim N(0, \gamma^2/(1-\phi^2)) \\
+  s & \in \{1,\ldots,n_{s}\}\\
+  t & \in \{1,\ldots, n_{y}\}
+\end{align}
+$$
+
+```{r}
+#| echo: false
+library(ggplot2)
+library(dplyr)
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox %>% left_join(stock, by = "PopID")
+sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
+sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup()
+```
+
+## Classic Residual Analysis
+
+```{r}
+#| echo: true
+#| eval: true
+
+library(RTMB)
+
+sox$stock <- as.numeric(factor(sox$PopName))
+nstocks <- max(sox$stock)
+sox <- sox %>% mutate(time = yr - min(yr) + 1)
+nyears <- max(sox$time)
+minyear <- min(sox$yr)
+sox$logRS <- log(sox$recruits/sox$spawners)
+
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2),
+  re_time = rnorm(nyears),
+  logtphi = 0,
+  logsigma_time = 0
+)
+
+negll <- function(pars){
+  
+  getAll(pars, sox, warn = FALSE)
+  beta <- exp(logbeta)
+  
+  logRS <- OBS(logRS)
+  
+  sigma <- exp(logsigma)
+  sigma_re <- exp(logsigma_re)
+  sigma_time <- exp(logsigma_time)
+  sigma_obs <- sigma[stock]
+  phi <- 2*plogis(logtphi)-1
+  
+  alpha_stock <- re + alpha0
+  ADREPORT(alpha_stock)
+  
+  mu <- alpha_stock[stock] + re_time[time] - beta[stock]*spawners_scaled
+  logRS <- OBS(logRS)
+  
+  ## Use this for built in residuals
+  ll <- dautoreg(re_time,phi=phi,scale=sqrt(sigma_time^2/(1-phi^2)), log=TRUE)
+
+  ll <- ll + sum(dnorm(re, 0, sigma_re, log = TRUE))
+  ll <- ll + sum(dnorm(logRS, mu, sigma_obs, log = TRUE))
+  
+  REPORT(mu)
+  REPORT(re_time)
+  REPORT(sigma_obs)
+  
+  return(-ll)
+}
+
+obj <- MakeADFun(func = negll, parameters = parameters, random = c("re", "re_time"), silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+sox$expected <- obj$report()$mu
+sox$sigma <- obj$report()$sigma_obs
+sox <- sox %>% 
+  mutate(resid = logRS - expected) %>%
+  mutate(resid_std = resid/sigma)
+```
+
+## Classic Residual Analysis (plot)
+
+- Looks okay
+- Conditional on random effects
+- Checks if conditional error structure is correct
+- Not about random effect structure
+
+::: {#my-long-container style="height: 300px; border: 1px solid #ccc;"}
+
+```{r}
+#| echo: true
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "65%"
+ 
+ggplot(data = sox, aes(x = expected, y = resid)) + 
+  geom_point() + theme_minimal() + 
+  geom_hline(yintercept = 0, col = 'red', linetype = 2) +
+  ylab("Observed - Expected")
+
+# qqnorm(sox$resid)
+# qqline(sox$resid)
+```
+:::
+
+## Classic Residual Analysis (group)
+
+```{r}
+#| echo: true
+
+ggplot(data = sox, aes(x = PopName, y = resid)) + 
+  geom_boxplot() + theme_minimal() + 
+  geom_hline(yintercept = 0, col = 'red', linetype = 2) +
+  ylab("Observed - Expected") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+## Randomized Quantile Residuals
+
+- Do we know the CDF of this distribution?
+- If we don't know the CDF then we can simulate to approximate it.
+- Do we simulate to include the random effect uncertainty (unconditional)?
+- In this case, equivalent to standardized residuals
+
+```{r}
+#| echo: true
+
+## Known CDF
+sox <- sox %>% mutate(cdf = pnorm(logRS, expected, sigma))
+
+## Simulate for CDF
+sims <- NULL
+for( i in 1:1000 ){
+ sims <- cbind(sims, rnorm(nrow(sox), sox$expected, sox$sigma))
+}
+## What proportion of simulations are less than observed?
+sox$cdf_sim <- sapply(1:nrow(sox), FUN = function(i){(sum(sims[i, ] < sox$logRS[i]))/1000})
+
+## RQR residual
+sox$rqr <- qnorm(sox$cdf)
+sox$rqr_sim <- qnorm(sox$cdf_sim)
+
+ggplot(data = sox, aes(x = resid_std, y = rqr)) + 
+  geom_point() + theme_minimal() + 
+  geom_abline(intercept = 0, slope =1, col = 'red', linetype = 2) +
+  xlab("Standardized Residuals") +
+  ylab("Randomized Quantile Residuals")
+```
+
+## Classic Residual Analysis (time)
+
+- Do the conditional residuals look independent?
+
+```{r}
+#| echo: true
+ 
+ggplot(data = sox %>% filter(PopName == "Harrison"), aes(x = time, y = resid,)) + 
+  geom_point() + geom_line() + theme_minimal() + 
+  geom_hline(yintercept = 0, col = 'red', linetype = 2) +
+  ylab("Observed - Expected")
+```
+
+## One Step Ahead Residuals
+
+- We have assumed that the residuals are independent.
+- If they aren't, then you can get bad looking residuals even if the model is 'correct'
+- Instead, we can condition the residuals on the previous observation
+
+$$
+  (y_i - \widehat{y}_{i|i-1})/\widehat{\sigma}_{i|i-1}
+$$
+- In this particular model, we have all observations within a year, conditional on the previous year's random effect and then the stock specific random effect across years.
+
+```{r}
+#| echo: ture
+
+resid_osa <- oneStepPredict (obj, trace = FALSE, method="oneStepGeneric")
+sox$resid_osa <- resid_osa$residual
+
+par(mfrow = c(1,2))
+qqnorm(sox$resid_std, main = "Standardized Residuals QQ plot")
+qqline(sox$resid_std)
+
+qqnorm(resid_osa$residual, main = "OSA Residuals QQ plot")
+qqline(resid_osa$residual)
+```
+
+## End of Module
+
+- See ***osa_multinomial.qmd*** example for a multinomial distribution
+- As our model becomes more complicated, we need to think harder about the residual analysis
+- If you have non-normal data, always use RQR residuals, or OSA
+- The more we want to code 'custom' the more work we need to also do for model checking, validation, and reporting

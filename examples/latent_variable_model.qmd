@@ -1,0 +1,192 @@
+---
+title: "Latent Variable Model"
+format: 
+  html:
+    self-contained: true
+---
+
+We can use a dimension reduction technique to create correlation between stocks by building a covariance matrix with latent factor loading. That sounds complicated but is relatively straightforward to code. See `gllvm` for an R package that does that.
+
+If we want the error for some stocks to be correlated, then for year $t$, across all stocks,
+
+$$
+  \boldsymbol{\epsilon}_t \sim N(\mathbf{0}, \Sigma),
+$$
+where $\Sigma$ is a covariance matrix. We can induce a flexible low dimension covariance matrix by adding some unique random effects such that for some unobserved variables per year $z_t$, and factor loading $\lambda_s$ per stock, then
+
+$$
+  \mathbf{z}_i \sim N(\mathbf{0}, \text{I}).
+$$
+We will start with two latent variables, and write 
+
+$$
+  \log(R_i/S_i) =  \alpha_{s_i} + \beta_{s_i} S_i + \mathbf{z}_{t}\boldsymbol{\lambda}_{s_i} + \epsilon_i
+$$
+
+```{r}
+#| echo: false
+library(ggplot2)
+library(dplyr)
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox %>% left_join(stock, by = "PopID")
+sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
+sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup()
+```
+
+
+```{r}
+#| echo: true
+#| eval: true
+
+library(RTMB)
+
+sox$stock <- as.numeric(factor(sox$PopName))
+nstocks <- max(sox$stock)
+sox <- sox %>% mutate(time = yr - min(yr) + 1)
+nyears <- max(sox$time)
+minyear <- min(sox$yr)
+sox$logRS <- log(sox$recruits/sox$spawners)
+nobs <- nrow(sox)
+
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2),
+  re_time = rnorm(nyears),
+  logitphi = 0,
+  logsigma_time = 0,
+  z = matrix(0, nrow = nyears, ncol = 2),
+  logsigma_z = c(0,0),
+  lambda1 = c(1, rnorm(nstocks-1)),
+  lambda2 = c(0,1, rnorm(nstocks-2))
+)
+
+negll <- function(pars){
+  
+  getAll(pars, sox, warn = FALSE)
+  beta <- exp(logbeta)
+  
+  logRS <- OBS(logRS)
+
+  sigma <- exp(logsigma)
+  sigma_re <- exp(logsigma_re)
+  sigma_time <- exp(logsigma_time)
+  sigma_obs <- sigma[stock]
+  sigma_z <- exp(logsigma_z)
+  phi <- 2*plogis(logitphi)-1
+  
+  alpha_stock <- re + alpha0
+  ADREPORT(alpha_stock)
+  
+  mu <- AD(numeric(nobs))
+  for( i in 1:nobs ){
+    mu[i] <- alpha_stock[stock[i]] + re_time[time[i]] - beta[stock[i]]*spawners_scaled[i] + 
+      z[time[i],1]*lambda1[stock[i]]*sigma_z[1] + z[time[i],2]*lambda2[stock[i]]*sigma_z[2]
+  }
+  
+  ## Use this for built in residuals
+  ll <- dautoreg(re_time,phi=phi,scale=sqrt(sigma_time^2/(1-phi^2)), log=TRUE)
+  ## Add in latent variables
+  for( i in 1:2 ) ll <- ll + sum(dnorm(z[,i], 0, 1, log = TRUE))
+    
+  
+  ll <- ll + sum(dnorm(re, 0, sigma_re, log = TRUE))
+  ll <- ll + sum(dnorm(logRS, mu, sigma_obs, log = TRUE))
+  
+  REPORT(mu)
+  REPORT(re_time)
+  REPORT(sigma_obs)
+  
+  return(-ll)
+}
+
+obj <- MakeADFun(func = negll, parameters = parameters, random = c("re", "re_time", "z"), 
+  map = list(lambda1 = factor(c(NA, 2:nstocks)), lambda2 = factor(c(NA, NA, 3:nstocks))), 
+  silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+sox$expected <- obj$report()$mu
+sox$sigma <- obj$report()$sigma_obs
+sox <- sox %>% 
+  mutate(resid = logRS - expected) %>%
+  mutate(resid_std = resid/sigma)
+
+ggplot(data = sox, aes(x = expected, y = resid)) + 
+  geom_point() + theme_minimal() + 
+  geom_hline(yintercept = 0, col = 'red', linetype = 2) +
+  ylab("Observed - Expected")
+
+
+## Stock Covariance
+## Extract fitted parameters
+p <- obj$env$parList(fit$par)
+
+## Factor loading matrix
+Lambda <- cbind(p$lambda1, p$lambda2)
+
+## Covariance between stocks
+Sigma_latent <- Lambda %*% t(Lambda)
+
+library(corrplot)
+
+corrplot(
+  cov2cor(Sigma_latent),
+  method = "color",
+  type = "lower",
+  addCoef.col = "black",
+  tl.col = "black",
+  title = "Latent correlation between stocks",
+  mar = c(0, 0, 2, 0)
+)
+
+## Convert to correlation
+Cor_latent <- cov2cor(Sigma_latent)
+
+## Convert correlation to Euclidean distance
+D <- as.dist(sqrt(2 * (1 - Cor_latent)))
+
+## Fit PAM for different numbers of clusters
+k_range <- 2:min(10, nstocks - 1)
+
+library(cluster)
+
+pam_fits <- lapply(k_range, function(k) {
+  pam(D, k = k, diss = TRUE)
+})
+
+## Average silhouette widths
+sil_width <- sapply(pam_fits, function(x) {
+  x$silinfo$avg.width
+})
+
+## Optimal number of clusters
+best_k <- k_range[which.max(sil_width)]
+
+best_k
+
+plot(
+  k_range,
+  sil_width,
+  type = "b",
+  pch = 19,
+  xlab = "Number of clusters",
+  ylab = "Average silhouette width",
+  main = "Choosing number of clusters"
+)
+
+abline(v = best_k, col = "red", lty = 2)
+pam_best <- pam_fits[[which(k_range == best_k)]]
+
+stock_clusters <- pam_best$clustering
+
+output <- data.frame(stock = 1:nstocks, stock_cluster = stock_clusters)
+sox <- sox %>% left_join(output)
+
+ggplot(data = sox, aes(x = PopName, y = resid)) + 
+  geom_boxplot() + theme_minimal() + facet_wrap(~stock_cluster, scales = "free_x") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+

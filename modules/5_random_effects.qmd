@@ -24,8 +24,8 @@ execute:
 $$
 \begin{align}
   \log(R_i/S_i) & =  \alpha_{s_i} + \beta_{s_i} S_i + \epsilon_i \\
-  \alpha_{s} & \sim N(\alpha_0, \eta) \\
-  \epsilon_i & \sim N(0, \sigma_{s_i}) \\
+  \alpha_{s} & \sim N(\alpha_0, \eta^2) \\
+  \epsilon_i & \sim N(0, \sigma_{s_i}^2) \\
   s & \in \{1,\ldots,n_{s}\}  
 \end{align}
 $$
@@ -40,6 +40,25 @@ sox <- sox %>% left_join(stock, by = "PopID")
 sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
 sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup()
 ```
+
+## Ways to Code Random Effects
+
+- Consider $y \sim N(\mu, \sigma)$
+- Option 1: Centered 
+  * Write $y$ as the random variable in terms of its mean
+  * `dnorm(y, mu, sigma)` 
+- Option 2: In between
+  * Write y as a function of a standard dnormal. 
+  * `dnorm(z, 0, sigma)`
+  * `y = mu + z`
+- Option 3: Uncentered
+  * Write y as a function of a standard dnormal. 
+  * `dnorm(z, 0, 1)`
+  * `y = mu + z*sigma`
+
+- All models are numerically the same, but sometimes one is easier to fit than the other.
+
+- I like option 2 generally, but HMC (Stan) likes option 3.
 
 ## Coding in RTMB
 
@@ -66,11 +85,11 @@ negll <- function(pars){
   
   sigma <- exp(logsigma)
   sigma_re <- exp(logsigma_re)
-  alpha_re <- re + alpha0
-
-  ADREPORT(alpha_re)
+  alpha <- re + alpha0
   
-  mu <- alpha_re[stock] - beta[stock]*spawners_scaled
+  ADREPORT(alpha)
+  
+  mu <- alpha[stock] - beta[stock]*spawners_scaled
   logRS <- OBS(logRS)
   
   ll <- sum(dnorm(re, 0, sigma_re, log = TRUE))
@@ -111,13 +130,17 @@ $$
 
 - Requires fast + accurate gradient/hessian computation
 
-- Likelihood theory tells us with more data the likelihood should become smoother and have a sharp peak.
+- With more data, in theory the likelihood is smooth and has a sharp peak.
 
 - Steps required are
   * Maximize $f(\textbf{x}, \textbf{u})$ with respect to the random effects, $\textbf{u}$, with fixed parameter values of $\boldsymbol{\theta}$
-  * Compute Hessian and return approximate likelihood
+  * Compute Hessian and return approximate marginal likelihood
 
 ## Laplace Approximation Example 1
+
+- A look into the black box, but can ignore the custom code.
+
+- If we have a gamma random effect on a Poisson rate, the marginal likelihood is a negative binomial.
 
 ::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
 ```{r}
@@ -160,9 +183,10 @@ lines(size, exp(ftrue), type = "l", col = 'red', lty = 2)
 
 ## Laplace Approximation Example 2
 
+- When you have normally distributed intercept, and normal data, the marginal likelihood of a group of observations is multivariate normal.
+
 ```{r}
 #| echo: true
-
 
 u <- rnorm(1, 0, 2 )
 x <- rnorm(5, 1+u, 1.5)
@@ -197,12 +221,15 @@ nll_exact(c(1, 1.5, 2))
 
 ## Back to Sockeye
 
-- RTMB makes it really easy to compute the marginalize likelihood.
+- RTMB makes it really easy to compute the marginal likelihood.
 
-- They even make it easy to do a basic check if the laplace approximation is working.
+- They even make it easy to do a basic check if the Laplace approximation is working.
+  * Based on checking if gradient of negative log-likelihood is zero.
+  * If approximation is bad, average gradient is not zero
 
 ```{r}
 #| echo: true
+#| eval: false
 
 obj <- MakeADFun(func = negll, parameters = parameters, random = "re", silent = TRUE)
 fit <- nlminb(obj$par, obj$fn, obj$gr)
@@ -212,7 +239,272 @@ s$marginal$p.value
 ```
 
 ```{r}
-#| eval: FALSE
+#| eval: false
+#| echo: true
+
 resids <- oneStepPredict(obj, discrete=FALSE, trace=FALSE)
 qqnorm(resids$res); abline(0,1)
 ```
+
+## Time Varying Productivity
+
+- Often we expect productivity to change with time.
+- Perhaps there is a global time varying productivity randomly changes, with stock specific differences.
+- Let's write that as
+
+\begin{align}
+  \alpha_{st} & = \alpha_0 + a_t + u_s\\
+  a_t|a_{t-1} & \sim N(\phi a_{t-1}, \epsilon^2)\\
+  u_s & \sim N(0, \eta^2)
+\end{align}
+
+- $\phi \in (-1, 1)$ is the amount of correlation between observations.
+
+- Need to know what the first observation distribution is.
+- Use stationary distribution, or
+$$
+  a_0 \sim N(0, \frac{\epsilon^2}{1-\phi^2})
+$$
+
+- We can use a logit on an interval to transform $\phi$.
+- First $(\phi + 1)/2 \in (0,1)$, then it's a logit.
+- Back transform inverse logit times 2 minus 1
+
+## Sockeye Time Varying Producitivity
+
+- Need to temporally align the data!
+
+```{r}
+#| echo: true
+
+sox <- sox %>% mutate(time = yr - min(yr) + 1)
+nyears <- max(sox$time)
+minyear <- min(sox$yr)
+```
+
+## Sockeye Time Varying Producitivity
+
+```{r}
+#| echo: true 
+#| eval: false
+
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2),
+  re_time = rnorm(nyears),
+  logitphi = 0,
+  logsigma_time = 0
+)
+
+negll_ar <- function(pars){
+  
+  getAll(pars, sox, warn = FALSE)
+  beta <- exp(logbeta)
+  
+  sigma <- exp(logsigma)
+  sigma_re <- exp(logsigma_re)
+  sigma_time <- exp(logsigma_time)
+  phi <- 2*plogis(logitphi)-1
+
+  alpha_stock <- re + alpha0
+  ADREPORT(alpha_stock)
+  
+  mu <- alpha_stock[stock] + re_time[time] - beta[stock]*spawners_scaled
+  logRS <- OBS(logRS)
+  
+  ll <- dnorm(re_time[1], 0, sqrt(sigma_time^2/(1-phi^2)), log = TRUE)
+  for( t in 2:nyears ) 
+    ll <- ll + dnorm(re_time[t], phi*re_time[t-1], sigma_time, log = TRUE)
+
+  ll <- ll + sum(dnorm(re, 0, sigma_re, log = TRUE))
+  ll <- ll + sum(dnorm(logRS, mu, sigma[stock], log = TRUE))
+  
+  REPORT(mu)
+  REPORT(re_time)
+  
+  return(-ll)
+}
+
+obj_ar <- MakeADFun(func = negll_ar, parameters = parameters, random = c("re", "re_time"), silent = TRUE)
+fit_ar <- nlminb(obj_ar$par, obj_ar$fn, obj_ar$gr)
+```
+
+
+## Plot Time Effect
+
+```{r}
+#| echo: true
+#| eval: false
+
+re_time <- obj_ar$report()$re_time
+ggplot() + geom_line(aes(x = minyear+0:(nyears-1), y = re_time)) + theme_minimal() + geom_hline(yintercept = 0, col = 'red', linetype = 'dashed') + xlab("Year") + ylab("Productivity Time Effect")
+```
+
+## Using RTMB's AR Distribution
+
+```{r}
+#| echo: true
+#| eval: false
+
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2),
+  re_time = rnorm(nyears),
+  logitphi = 0,
+  logsigma_time = 0
+)
+
+negll_autoreg <- function(pars){
+  
+  getAll(pars, sox, warn = FALSE)
+  beta <- exp(logbeta)
+  
+  sigma <- exp(logsigma)
+  sigma_re <- exp(logsigma_re)
+  sigma_time <- exp(logsigma_time)
+  phi <- 2*plogis(logitphi)-1
+
+  alpha_stock <- re + alpha0
+  ADREPORT(alpha_stock)
+  
+  mu <- alpha_stock[stock] + re_time[time] - beta[stock]*spawners_scaled
+  logRS <- OBS(logRS)
+  
+  ll <- dautoreg(re_time,phi=phi,scale=sqrt(sigma_time^2/(1-phi^2)), log=TRUE)
+
+  ll <- ll + sum(dnorm(re, 0, sigma_re, log = TRUE))
+  ll <- ll + sum(dnorm(logRS, mu, sigma[stock], log = TRUE))
+  
+  REPORT(mu)
+  REPORT(re_time)
+  
+  return(-ll)
+}
+
+obj_autoreg <- MakeADFun(func = negll_autoreg, parameters = parameters, random = c("re", "re_time"), silent = TRUE)
+fit_autoreg <- nlminb(obj_autoreg$par, obj_autoreg$fn, obj_autoreg$gr)
+```
+
+## As a Gauss Markov Random Field Distribution
+
+- For the temporal random effect, we can write the joint distribution as a multivariate normal, with mean 0, and covariance, $\Sigma$,
+
+\begin{align}
+  \Sigma_{ii} & = \epsilon^2/(1-\phi^2)\\
+  \Sigma_{ij} & = \epsilon^2/(1-\phi^2) \phi^{|t_i-t_j|}
+\end{align}
+
+- This covariance matrix is dense, which makes computation challenging, even for 75 years. Instead, we can write it in terms of the inverse, or precision matrix, $Q$, that is tridiagonal.
+
+- You might consider this approach for spatial models such as those presented in `sdmTMB`.
+
+```{r}
+#| echo: true
+#| eval: false
+
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2),
+  re_time = rnorm(nyears),
+  logitphi = 0,
+  logsigma_time = 0
+)
+
+negll_gmrf <- function(pars){
+  
+  getAll(pars, sox, warn = FALSE)
+  beta <- exp(logbeta)
+  
+  sigma <- exp(logsigma)
+  sigma_re <- exp(logsigma_re)
+  sigma_time <- exp(logsigma_time)
+  phi <- 2*plogis(logitphi)-1
+
+  alpha_stock <- re + alpha0
+  ADREPORT(alpha_stock)
+  
+  mu <- alpha_stock[stock] + re_time[time] - beta[stock]*spawners_scaled
+  logRS <- OBS(logRS)
+
+  Q<-Matrix::spMatrix(nyears,nyears)
+  diag(Q)<-c(1,rep(1+phi^2, nyears-2),1)
+  Q[cbind(2:nyears,1:(nyears-1))] <- -phi
+  Q[cbind(1:(nyears-1), 2:nyears)] <- -phi
+  Q <- Q/(sigma_time^2)
+  ll <- ll + dgmrf(re_time, Q=Q, log=TRUE)
+
+  ll <- ll + sum(dnorm(re, 0, sigma_re, log = TRUE))
+  ll <- ll + sum(dnorm(logRS, mu, sigma[stock], log = TRUE))
+  
+  REPORT(mu)
+  REPORT(re_time)
+  
+  return(-ll)
+}
+
+obj_gmrf <- MakeADFun(func = negll_gmrf, parameters = parameters, random = c("re", "re_time"), silent = TRUE)
+fit_gmrf <- nlminb(obj_gmrf$par, obj_gmrf$fn, obj_gmrf$gr)
+```
+
+## What is Best?
+
+- In this example, there is not much in it (gmrf is slowest).
+- Usually best to do what is most readable and understandable.
+- Looping through each year is readable and simplest.
+
+```{r}
+#| echo: true
+#| eval: false 
+
+
+init <- obj_gmrf$par
+npar <- length(init)
+microbenchmark::microbenchmark(
+  "looped" = obj_ar$fn(init+rnorm(npar, 0, 0.1)),
+  "autoreg" = obj_autoreg$fn(init+rnorm(npar, 0, 0.1)),
+  "gmrf" = obj_gmrf$fn(init+rnorm(npar, 0, 0.1)),
+  times = 10  
+    )
+
+```
+
+## Complete Random Walk
+
+- If we fix $\phi = 1$ then it is a complete random walk dependent only on the previous observation.
+
+- `map = list()` allows us to set values to be constant.
+  * Named for each parameter.
+  * `NA` is fixed the value fixed at initial.
+  * If factor levels are they same they are fitted as a single value/
+
+```{r}
+#| echo: true 
+#| eval: false
+
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2),
+  re_time = rnorm(nyears),
+  logitphi = Inf, ## same 1.
+  logsigma_time = 0
+)
+
+obj <- MakeADFun(func = negll_ar, parameters = parameters, 
+  map = list(logitphi = factor(NA)), random = c("re", "re_time"), silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+```
+
+## End of Module
+
