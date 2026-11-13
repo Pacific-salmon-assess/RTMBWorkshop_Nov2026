@@ -74,7 +74,6 @@ sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawner
 ```{r}
 #| echo: true
 #| eval: true
-
 library(RTMB)
 
 sox$stock <- as.numeric(factor(sox$PopName))
@@ -147,10 +146,10 @@ sox <- sox %>%
 
 ```{r}
 #| echo: true
-#| fig-width: 5
-#| fig-height: 4
-#| out-width: "65%"
- 
+#| out-width: "70%"
+#| fig-align: "center"
+
+
 ggplot(data = sox, aes(x = expected, y = resid)) + 
   geom_point() + theme_minimal() + 
   geom_hline(yintercept = 0, col = 'red', linetype = 2) +
@@ -165,6 +164,8 @@ ggplot(data = sox, aes(x = expected, y = resid)) +
 
 ```{r}
 #| echo: true
+#| out-width: "70%"
+#| fig-align: "center"
 
 ggplot(data = sox, aes(x = PopName, y = resid)) + 
   geom_boxplot() + theme_minimal() + 
@@ -180,8 +181,12 @@ ggplot(data = sox, aes(x = PopName, y = resid)) +
 - Do we simulate to include the random effect uncertainty (unconditional)?
 - In this case, equivalent to standardized residuals
 
+::: {#my-long-container style="height: 300px; border: 1px solid #ccc;"}
+
 ```{r}
 #| echo: true
+#| out-width: "70%"
+#| fig-align: "center"
 
 ## Known CDF
 sox <- sox %>% mutate(cdf = pnorm(logRS, expected, sigma))
@@ -205,13 +210,17 @@ ggplot(data = sox, aes(x = resid_std, y = rqr)) +
   ylab("Randomized Quantile Residuals")
 ```
 
+:::
+
 ## Classic Residual Analysis (time)
 
 - Do the conditional residuals look independent?
 
 ```{r}
 #| echo: true
- 
+#| out-width: "70%"
+#| fig-align: "center"
+
 ggplot(data = sox %>% filter(PopName == "Harrison"), aes(x = time, y = resid,)) + 
   geom_point() + geom_line() + theme_minimal() + 
   geom_hline(yintercept = 0, col = 'red', linetype = 2) +
@@ -229,8 +238,12 @@ $$
 $$
 - In this particular model, we have all observations within a year, conditional on the previous year's random effect and then the stock specific random effect across years.
 
+::: {#my-long-container style="height: 300px; border: 1px solid #ccc;"}
+
 ```{r}
 #| echo: ture
+#| out-width: "70%"
+#| fig-align: "center"
 
 resid_osa <- oneStepPredict (obj, trace = FALSE, method="oneStepGeneric")
 sox$resid_osa <- resid_osa$residual
@@ -242,6 +255,8 @@ qqline(sox$resid_std)
 qqnorm(resid_osa$residual, main = "OSA Residuals QQ plot")
 qqline(resid_osa$residual)
 ```
+
+:::
 
 ## End of Module
 

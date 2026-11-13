@@ -40,16 +40,16 @@ $$
 - Requires that $f(x) \geq 0$ and $\sum_i f(x = i) = 1$.
 - Typical Functions: Binomial, Poisson, Negative Binomial
 
-::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
+::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
 ```{r}
 #| echo: true
-#| out-width: "60%"
+#| out-width: "75%"
 #| fig-align: center
 
 x <- 0:20
 fx <- dbinom(x, size = 20, prob = 0.25)
 plot(x, fx, ylab = "f(x)", xlab = "x", col = "black", lwd = 3, type = "h")
-sum(fx)
+# sum(fx)
 ```
 :::
 
@@ -66,9 +66,9 @@ $$
   p(x \leq 1) = \int_{-\infty}^1 f(x)dx
 $$
 
-::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
+::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
 ```{r}
-#| out-width: "60%"
+#| out-width: "75%"
 #| echo: true
 #| fig-align: center
 
@@ -76,7 +76,7 @@ x <- seq(-5, 5, by = 0.01)
 fx <- dnorm(x, 0, 1)
 plot(x, fx, ylab = "f(x)", xlab = "x", type = "l")
 polygon(c(x[x <= 1], 1, 0), c(fx[x <= 1], 0, 0), col="blue", border=NA)
-sum(fx*0.01)
+# sum(fx*0.01)
 ```
 :::
 
@@ -102,9 +102,9 @@ $$
   L(p|\textbf{x}) = f(x_1) \cdots f(x_{30}).
 $$
 
-::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
+::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
 ```{r}
-#| out-width: "60%"
+#| out-width: "75%"
 #| echo: true
 #| fig-align: center
 
@@ -128,7 +128,7 @@ $$
 ::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
 ```{r}
 #| echo: true
-#| out-width: "60%"
+#| out-width: "75%"
 #| fig-align: center
 
 x <- rnorm(30, mean = 3, sd = 0.75)

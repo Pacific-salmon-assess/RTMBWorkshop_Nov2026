@@ -43,154 +43,189 @@ sox <- sox %>% left_join(stock, by = "PopID")
 sox <- sox %>% left_join(covariates, by = "yr")
 sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
 sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup()
-
-sox_ch_pred <- sox %>% filter(PopName == "Stellako") %>% filter(is.na(age5))
-sox_ch <- sox %>% filter(PopName == "Stellako") %>% filter(!is.na(age5))
-logRS <- cbind(log((sox_ch$age4+0.0000001)/sox_ch$spawners), log((sox_ch$age5+0.0000001)/sox_ch$spawners))
-nobs <- nrow(logRS)
 ```
 
 ## Age Based Ricker Model
 
-- I think that carrying capacity is shared between age classes but productivity is not.
+- Carrying capacity is shared between age classes but productivity is not.
 - The observations are related so will choose,
 
 $$
   \log(R_{at}/S_t) = N(\boldsymbol{\alpha}_a - \beta S_t, \Sigma)
 $$
+- Given that we have age 4 returns with `NA` for age 5, we can write this as a conditional normal, for $y_{at} = \log(R_{at}/S_t)$,
+
+\begin{align}
+  y_{4t} & \sim N(\mu_{4t}, \sigma_1)\\
+  y_{5t} | y_{4t} & \sim  N(\mu_{5t} + \Sigma_{12}/\Sigma_{11}(y_{4t} - m_{4t}), \Sigma_{22} - \Sigma_{12}^2\Sigma_{11})
+\end{align}
+
 ## Fitting it in RTMB
 
 ```{r}
+#| echo: true
+
+negll <- function(pars, data){
+  getAll(pars, data, warn = FALSE)
+
+  phi <- -1 + 2*plogis(logitphi)
+  sigma <- exp(logsigma)
+  beta <- exp(logbeta)
+  mu4 <- alpha[1] - beta*spawners
+  mu5 <- alpha[2] - beta*spawners + phi*sigma[2]/sigma[1]*(logRS4 - mu4)
+  mis4 <- is.na(logRS4)
+  mis5 <- is.na(logRS5)
+  sigma5 <- sqrt(sigma[2]^2*(1-phi^2))
+
+  ll <- sum(dnorm(logRS4[!mis4], mu4[!mis4], sigma[1], log = TRUE))
+  ll <- ll + sum(dnorm(logRS5[!mis5], mu5[!mis5], sigma5, log = TRUE))
+
+  ## Prediction is last year of 4 plus previous year of 5.
+  n <- length(mu4)
+  Eage4 <- exp(mu4)*spawners
+  Eage5 <- exp(mu5)*spawners
+  pred <- Eage4[n] + Eage5[n-1]
+  REPORT(pred)
+  REPORT(Eage4)
+  REPORT(Eage5)
+  return(-ll)
+}
+
+```
+
+## Prediction
+
+- Prediction: Combine age 4 prediction with spawners 4 years ago with age 5 expected from the previous spawner group.
+
+```{r}
+#| echo: true
+
+sox_ch <- sox %>% filter(PopName == "Stellako") %>%
+  mutate(logRS4 = log((age4+1e-4)/spawners),
+    logRS5 = log((age5+1e-4)/spawners))
+
+cmb <- function(f, d) function(p) f(p, d)
+
 params <- list(
-  logsigma = 0,
+  logsigma = c(0,0),
   alpha = c(0,0),
   logbeta = 0,
   logitphi = 0
   )
 
-negll <- function(pars){
-  getAll(pars, sox_ch, warn = FALSE)
-
-  phi <- -1 + 2*plogis(logitphi)
-  sigma <- exp(logsigma)
-  beta <- exp(logbeta)
-  Sigma <- sigma*diag(2)
-  Sigma[1,2] <- phi*(sigma^2) 
-  Sigma[2,1] <- phi*(sigma^2)
-  ll <- 0
-  for(i in 1:nobs) 
-    ll <- ll + dmvnorm(logRS[i,], alpha - beta*spawners[i], Sigma = Sigma, log = TRUE)
-  REPORT(Sigma)
-  return(-ll)
-}
-
-obj <- MakeADFun(negll, params, silent = TRUE)
+obj <- MakeADFun(cmb(negll, sox_ch), params, silent = TRUE)
 fit <- nlminb(obj$par, obj$fn, obj$gr)
+pars <- obj$env$parList(fit$par)
+```
 
-## Prediction:
-## Predict age 5 given age 4:
-pred_new <- function(mu_current, mu_next, Scurrent = 1, Snext = 1, N_age4, Sigma){
-  ## Age 5 prediction
-  mean_age5 <- mu[2] - (N_age4 - mu_current[1])*Sigma[1,2]/Sigma[1,1]
-  mu_next[1]*Snext + mean_age5*Scurrent
+## Do Prediction
+
+```{r}
+#| echo: true
+
+years <- 2000:2021
+pred <- NULL
+for( i in seq_along(years) ){
+  dat <- sox_ch %>% filter(yr <= years[i])
+  dat$logRS4[dat$yr == years[i]] <- NA
+  dat$logRS5[dat$yr == years[i]] <- NA
+  dat$logRS5[dat$yr == years[i]-1] <- NA
+
+  obj <- MakeADFun(cmb(negll, dat), params, silent = TRUE)
+  fit <- nlminb(obj$par, obj$fn, obj$gr)
+  pars <- obj$env$parList(fit$par)
+  pred <- c(pred, obj$report()$pred)
 }
 
-pList <- obj$env$parList(fit$par)
-Sigma <- obj$report()$Sigma
-Snext <- sox_ch_pred$spawners
-Scurrent <- sox_ch %>% slice(n()) %>% select(spawners) %>% unlist()
-mucurrent <- pList$alpha - exp(pList$logbeta)*Scurrent
-munext <- pList$alpha - exp(pList$logbeta)*Snext
-age4 <- sox_ch_pred$age4
-newyear <- pred_new(mu_current = mucurrent, mu_next = munext, Scurrent = Scurrent, Snext  = Snext, N_age4 = sox_ch_pred$age4, Sigma = Sigma)
+pred <- data.frame(year = years+4, pred = pred)
+
+library(tidyr)
+recruits_ch <- sox_ch %>% 
+  pivot_longer(c(age4, age5)) %>% 
+  mutate(year = ifelse(name == "age4", yr + 4, yr + 5)) %>%
+  group_by(year) %>% summarize(recruits = sum(value))
+
+recruits_ch %>% ggplot(aes(x = year, y = recruits)) + geom_line() + theme_minimal() +
+  geom_line(data = pred, aes(x = year, y = pred), col = 'red')
+
 ```
 
 ## Adding Covariates
 
 ```{r}
+#| echo: true
 
-params <- list(
-  logsigma = 0,
-  alpha = c(0,0),
-  a = numeric(4),
-  logbeta = 0,
-  logitphi = 0
-  )
-
-negll <- function(pars){
-  getAll(pars, sox_ch, warn = FALSE)
+negll <- function(pars, data, X){
+  getAll(pars, data, warn = FALSE)
 
   phi <- -1 + 2*plogis(logitphi)
   sigma <- exp(logsigma)
   beta <- exp(logbeta)
-  Sigma <- sigma*diag(2)
-  Sigma[1,2] <- phi*(sigma^2) 
-  Sigma[2,1] <- phi*(sigma^2)
+  delta_alpha <- drop(X %*% a)
   
-  delta_alpha <- a[1]*pdo + a[2]*stn2js + a[3]*peak + a[4]*mapsst
-  
-  ll <- 0
-  for(i in 1:nobs) 
-    ll <- ll + dmvnorm(logRS[i,], alpha + delta_alpha[i] - beta*spawners[i], Sigma = Sigma, log = TRUE)
-  REPORT(Sigma)
+  mu4 <- delta_alpha + alpha[1] - beta*spawners
+  mu5 <- delta_alpha + alpha[2] - beta*spawners + phi*sigma[2]/sigma[1]*(logRS4 - mu4)
+  mis4 <- is.na(logRS4)
+  mis5 <- is.na(logRS5)
+  sigma5 <- sqrt(sigma[2]^2*(1-phi^2))
+
+  ll <- sum(dnorm(logRS4[!mis4], mu4[!mis4], sigma[1], log = TRUE))
+  ll <- ll + sum(dnorm(logRS5[!mis5], mu5[!mis5], sigma5, log = TRUE))
+
+  ## Prediction is last year of 4 plus previous year of 5.
+  n <- length(mu4)
+  Eage4 <- exp(mu4)*spawners
+  Eage5 <- exp(mu5)*spawners
+  pred <- Eage4[n] + Eage5[n-1]
+  REPORT(pred)
+  REPORT(Eage4)
+  REPORT(Eage5)
   return(-ll)
 }
+cmb <- function(f, d, X) function(p) f(p, d, X)
 
-obj <- MakeADFun(negll, params, silent = TRUE)
+X <- model.matrix(~peak + aflow + mapsst + pdo + stn2js, data = sox_ch)
+
+params <- list(
+  logsigma = c(0,0),
+  alpha = c(0,0),
+  a = rnorm(ncol(X)),
+  logbeta = 0,
+  logitphi = 0
+  )
+
+obj <- MakeADFun(cmb(negll, sox_ch, X), params, silent = TRUE)
 fit <- nlminb(obj$par, obj$fn, obj$gr)
-
-pList <- obj$env$parList(fit$par)
-Sigma <- obj$report()$Sigma
-a <- pList$a
-sox_current <- sox_ch %>% slice(n())
-alphanext <- pList$alpha + a[1]*sox_ch_pred$pdo + a[2]*sox_ch_pred$stn2js + a[3]*sox_ch_pred$peak + a[4]*sox_ch_pred$mapsst
-alphacurrent <- pList$alpha + a[1]*sox_current$pdo + a[2]*sox_current$stn2js + a[3]*sox_current$peak + a[4]*sox_current$mapsst
-
-Snext <- sox_ch_pred$spawners
-Scurrent <- sox_ch %>% slice(n()) %>% select(spawners) %>% unlist()
-mucurrent <- alphacurrent - exp(pList$logbeta)*Scurrent
-munext <- alphanext - exp(pList$logbeta)*Snext
-age4 <- sox_ch_pred$age4
-newyear <- pred_new(mu_current = mucurrent, mu_next = munext, Scurrent = Scurrent, Snext  = Snext, N_age4 = sox_ch_pred$age4, Sigma = Sigma)
 ```
 
-## Forecast
+## Forecast w/ Covariates
 
 ```{r}
+sox_ch <- sox %>% filter(PopName == "Stellako") %>%
+  mutate(logRS4 = log((age4+1e-4)/spawners),
+    logRS5 = log((age5+1e-4)/spawners))
+
 years <- 2000:2021
 pred <- NULL
 for( i in seq_along(years) ){
-  sox_ch <- sox %>% filter(PopName == "Stellako", yr < years[i])
-  sox_pred <- sox %>% filter(PopName == "Stellako", yr == years[i])
-  logRS <- cbind(log((sox_ch$age4+0.0000001)/sox_ch$spawners),
-                 log((sox_ch$age5+0.0000001)/sox_ch$spawners))
-  nobs <- nrow(logRS)
+  dat <- sox_ch %>% filter(yr <= years[i])
+  dat$logRS4[dat$yr == years[i]] <- NA
+  dat$logRS5[dat$yr == years[i]] <- NA
+  dat$logRS5[dat$yr == years[i]-1] <- NA
+  X <- model.matrix(~ peak + aflow + jnesst + pdo + stn2js, data = dat)
 
-  obj <- MakeADFun(negll, params, silent = TRUE)
+  obj <- MakeADFun(cmb(negll, dat, X), params, silent = TRUE)
   fit <- nlminb(obj$par, obj$fn, obj$gr)
-
-  pList <- obj$env$parList(fit$par)
-  Sigma <- obj$report()$Sigma
-  a <- pList$a
-  sox_current <- sox_ch %>% slice(n())
-  alphanext <- pList$alpha + a[1]*sox_pred$pdo + a[2]*sox_pred$stn2js + a[3]*sox_pred$peak + a[4]*sox_pred$mapsst
-  alphacurrent <- pList$alpha + a[1]*sox_current$pdo + a[2]*sox_current$stn2js + a[3]*sox_current$peak + a[4]*sox_current$mapsst
-  
-  Snext <- sox_ch_pred$spawners
-  Scurrent <- sox_ch %>% slice(n()) %>% select(spawners) %>% unlist()
-  mucurrent <- alphacurrent - exp(pList$logbeta)*Scurrent
-  munext <- alphanext - exp(pList$logbeta)*Snext
-  age4 <- sox_ch_pred$age4
-  newyear <- pred_new(mu_current = mucurrent, mu_next = munext, Scurrent = Scurrent, Snext  = Snext, N_age4 = sox_ch_pred$age4, Sigma = Sigma)
-
-  pred <- c(pred, newyear)
+  pars <- obj$env$parList(fit$par)
+  pred <- c(pred, obj$report()$pred)
 }
-pred <- cbind(year = years + 4, pred)
 
-library(tidyr)
-recruits_ch <- sox %>% filter(PopName == "Stellako", yr < years[i]) %>% 
-  pivot_longer(c(age4, age5)) %>% mutate(year = ifelse(name == "age4", yr + 4, yr + 5))
-recruits_ch <- recruits_ch %>% group_by(year) %>% summarize(recruits = sum(value))
+pred <- data.frame(year = years+4, pred = pred)
+
+recruits_ch <- sox_ch %>% 
+  pivot_longer(c(age4, age5)) %>% 
+  mutate(year = ifelse(name == "age4", yr + 4, yr + 5)) %>%
+  group_by(year) %>% summarize(recruits = sum(value))
 
 recruits_ch %>% ggplot(aes(x = year, y = recruits)) + geom_line() + theme_minimal() +
   geom_line(data = pred, aes(x = year, y = pred), col = 'red')

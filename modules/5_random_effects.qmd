@@ -114,11 +114,42 @@ fit <- nlminb(obj$par, obj$fn, obj$gr)
 
 ## Marginal Likelihood
 
-- To marginalize, need to integrate joint density is $f(\textbf{x}, \textbf{u})$,
+- For discrete distributions, we can simply sum over the unobserved variables
+- People might be familiar with zero-inflation models
+
+\begin{align}
+  x|z & = \text{Poisson}(\lambda z)\\
+  z & \sim \text{Bernoulli}(p)
+\end{align}
+
+- In this case, the unconditional (marginal) distribution of $x$ is
+
+$$
+  p(x) = p(z = 0) + p(z=1)p(x|z = 1)
+$$
+
+
+## Marginal Likelihood
+
+- To marginalize continuous random variable, need to integrate joint density is $f(\textbf{x}, \textbf{u})$,
 
 $$
   f(\textbf{x}) = \int_{\Omega} f(\textbf{x} | \textbf{u})f(\textbf{u}) d\textbf{u}
 $$
+
+- Simplest way to solve this is 'brute force', by summing over small chunks.
+
+```{r}
+#| echo: true
+
+dmarg <- function(x, mu, sigma, sigma_re){
+  re <- seq(-5, 5, by = 0.01)
+  pdens <- exp(dnorm(x, mu + re, sigma, log = TRUE) + dnorm(re, 0, sigma_re, log = TRUE))
+  sum(pdens)*0.01
+}
+dmarg(0.5, 1, 0.5, 0.25)          ## Brute Force Integral
+dnorm(0.5, 1, sqrt(0.5^2+0.25^2)) ## Known Marginal
+```
 
 ## Laplace Approximation
 
@@ -142,12 +173,13 @@ $$
 
 - If we have a gamma random effect on a Poisson rate, the marginal likelihood is a negative binomial.
 
-::: {#my-long-container style="height: 200px; border: 1px solid #ccc;"}
+::: {#my-long-container style="height: 400px; border: 1px solid #ccc;"}
 ```{r}
 #| echo: true
 #| fig-width: 5
 #| fig-height: 4
-#| out-width: "100%"
+#| out-width: "60%"
+#| fig-align: "center"
 
 ## Equivalent to NB
 r <- 5
@@ -241,6 +273,7 @@ s$marginal$p.value
 ```{r}
 #| eval: false
 #| echo: true
+#| fig-align: "center"
 
 resids <- oneStepPredict(obj, discrete=FALSE, trace=FALSE)
 qqnorm(resids$res); abline(0,1)

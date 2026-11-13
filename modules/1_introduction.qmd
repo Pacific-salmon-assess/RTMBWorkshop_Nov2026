@@ -42,7 +42,7 @@ execute:
 - With great power comes great responsibility.
   * In RTMB you can do a lot but that doesn't mean you should
   * Need to understand the statistical theory to stay 'safe'
-
+- We will take lots of breaks and give an hour for lunch
 
 ## Learning Outcomes
 
@@ -55,18 +55,18 @@ execute:
 
 1. (9:00 – 10:00) Introduction to writing a likelihood with RTMB.
 2. (10:00 - 11:00) Computing gradients and optimization
-3. (11:00 – 12:00) Variance estimation and reporting
+3. (11:00 – 12:00) Variance estimation and reporting (inference)
 4. (12:00 - 13:00) Lunch
 4. (13:00 – 14:00) Hierarchical models in RTMB
-5. (14:00 – 15:00) Practice fitting hierarchical models.
-6. (15:00 – 16:00) Additional random effect structures (e.g. time varying productivity). 
+5. (14:00 – 15:00) Practice fitting hierarchical models
+6. (15:00 – 16:00) Additional random effect structures (e.g. time varying productivity) 
 
 ## Outline Day 2
 
-1. (9:00 – 9:50) Variance estimation for maximum likelihood. Delta method to approximate parameters. Using RTMB to report variance and confidence intervals. 
-2. (10:00 – 10:50) RTMB functionality. Learn little details about how to use RTMB effectively. 
-3. (11:00 – 11:50) Writing helper functions and atomics (e.g. Lambert W). Best coding practices. 
-4. (13:00 – 16:00) Practice writing complex likelihood functions in RTMB 
+1. (9:00 – 10:00 Custom functions in RTMB, including distributions
+2. (10:00 – 11:00) Computing residuals
+3. (11:00 – 12:00) Write a prediction model for Fraser sockeye
+4. (13:00 – 16:00) Practicals
 
 ## Precourse Assignment
 

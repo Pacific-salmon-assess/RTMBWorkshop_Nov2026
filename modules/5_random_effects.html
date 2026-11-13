@@ -1310,11 +1310,46 @@ margin-right: 0; }
 <section id="marginal-likelihood" class="slide level2">
 <h2>Marginal Likelihood</h2>
 <ul>
-<li>To marginalize, need to integrate joint density is <span class="math inline">\(f(\textbf{x}, \textbf{u})\)</span>,</li>
+<li>For discrete distributions, we can simply sum over the unobserved variables</li>
+<li>People might be familiar with zero-inflation models</li>
+</ul>
+<p><span class="math display">\[\begin{align}
+  x|z &amp; = \text{Poisson}(\lambda z)\\
+  z &amp; \sim \text{Bernoulli}(p)
+\end{align}\]</span></p>
+<ul>
+<li>In this case, the unconditional (marginal) distribution of <span class="math inline">\(x\)</span> is</li>
+</ul>
+<p><span class="math display">\[
+  p(x) = p(z = 0) + p(z=1)p(x|z = 1)
+\]</span></p>
+</section>
+<section id="marginal-likelihood-1" class="slide level2">
+<h2>Marginal Likelihood</h2>
+<ul>
+<li>To marginalize continuous random variable, need to integrate joint density is <span class="math inline">\(f(\textbf{x}, \textbf{u})\)</span>,</li>
 </ul>
 <p><span class="math display">\[
   f(\textbf{x}) = \int_{\Omega} f(\textbf{x} | \textbf{u})f(\textbf{u}) d\textbf{u}
 \]</span></p>
+<ul>
+<li>Simplest way to solve this is ‘brute force’, by summing over small chunks.</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1"></a>dmarg <span class="ot">&lt;-</span> <span class="cf">function</span>(x, mu, sigma, sigma_re){</span>
+<span id="cb2-2"><a href="#cb2-2"></a>  re <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="sc">-</span><span class="dv">5</span>, <span class="dv">5</span>, <span class="at">by =</span> <span class="fl">0.01</span>)</span>
+<span id="cb2-3"><a href="#cb2-3"></a>  pdens <span class="ot">&lt;-</span> <span class="fu">exp</span>(<span class="fu">dnorm</span>(x, mu <span class="sc">+</span> re, sigma, <span class="at">log =</span> <span class="cn">TRUE</span>) <span class="sc">+</span> <span class="fu">dnorm</span>(re, <span class="dv">0</span>, sigma_re, <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb2-4"><a href="#cb2-4"></a>  <span class="fu">sum</span>(pdens)<span class="sc">*</span><span class="fl">0.01</span></span>
+<span id="cb2-5"><a href="#cb2-5"></a>}</span>
+<span id="cb2-6"><a href="#cb2-6"></a><span class="fu">dmarg</span>(<span class="fl">0.5</span>, <span class="dv">1</span>, <span class="fl">0.5</span>, <span class="fl">0.25</span>)          <span class="do">## Brute Force Integral</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 0.4783737</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1"></a><span class="fu">dnorm</span>(<span class="fl">0.5</span>, <span class="dv">1</span>, <span class="fu">sqrt</span>(<span class="fl">0.5</span><span class="sc">^</span><span class="dv">2</span><span class="fl">+0.25</span><span class="sc">^</span><span class="dv">2</span>)) <span class="do">## Known Marginal</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 0.4783737</code></pre>
+</div>
+</div>
 </section>
 <section id="laplace-approximation" class="slide level2">
 <h2>Laplace Approximation</h2>
@@ -1337,46 +1372,50 @@ margin-right: 0; }
 <li><p>A look into the black box, but can ignore the custom code.</p></li>
 <li><p>If we have a gamma random effect on a Poisson rate, the marginal likelihood is a negative binomial.</p></li>
 </ul>
-<div id="my-long-container" style="height: 200px; border: 1px solid #ccc;">
-<div class="cell">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1"></a><span class="do">## Equivalent to NB</span></span>
-<span id="cb2-2"><a href="#cb2-2"></a>r <span class="ot">&lt;-</span> <span class="dv">5</span></span>
-<span id="cb2-3"><a href="#cb2-3"></a>prob <span class="ot">&lt;-</span> <span class="fl">0.25</span></span>
-<span id="cb2-4"><a href="#cb2-4"></a>lambda <span class="ot">&lt;-</span> <span class="fu">rgamma</span>(<span class="dv">1</span>, r, prob<span class="sc">/</span>(<span class="dv">1</span><span class="sc">-</span>prob))</span>
-<span id="cb2-5"><a href="#cb2-5"></a>obs <span class="ot">&lt;-</span> <span class="fu">rpois</span>(<span class="dv">1</span>, lambda)</span>
-<span id="cb2-6"><a href="#cb2-6"></a></span>
-<span id="cb2-7"><a href="#cb2-7"></a>pois_gamma <span class="ot">&lt;-</span> \(theta){</span>
-<span id="cb2-8"><a href="#cb2-8"></a>  <span class="sc">-</span><span class="fu">dpois</span>(obs, <span class="fu">exp</span>(theta[<span class="dv">1</span>]), <span class="at">log =</span> <span class="cn">TRUE</span>) <span class="sc">-</span> <span class="fu">dgamma</span>(<span class="fu">exp</span>(theta[<span class="dv">1</span>]), theta[<span class="dv">2</span>], theta[<span class="dv">3</span>]<span class="sc">/</span>(<span class="dv">1</span><span class="sc">-</span>theta[<span class="dv">3</span>]), <span class="at">log =</span> <span class="cn">TRUE</span>) <span class="sc">-</span> theta[<span class="dv">1</span>]  <span class="do">## Include Jacobian...</span></span>
-<span id="cb2-9"><a href="#cb2-9"></a>}</span>
-<span id="cb2-10"><a href="#cb2-10"></a><span class="do">## Manual Laplace</span></span>
-<span id="cb2-11"><a href="#cb2-11"></a>nb_approx <span class="ot">&lt;-</span> <span class="cf">function</span>(r, prob) {</span>
-<span id="cb2-12"><a href="#cb2-12"></a>  mle <span class="ot">&lt;-</span> <span class="fu">optimize</span>(\(u){<span class="fu">pois_gamma</span>(<span class="fu">c</span>(u, r, prob))}, <span class="dv">0</span>, <span class="at">lower =</span> <span class="dv">0</span>, <span class="at">upper =</span> <span class="dv">100</span>)</span>
-<span id="cb2-13"><a href="#cb2-13"></a>  u_hat <span class="ot">&lt;-</span> mle<span class="sc">$</span>minimum</span>
-<span id="cb2-14"><a href="#cb2-14"></a>  H <span class="ot">&lt;-</span> pracma<span class="sc">::</span><span class="fu">hessian</span>(\(u){<span class="fu">pois_gamma</span>(<span class="fu">c</span>(u, r, prob))}, u_hat)</span>
-<span id="cb2-15"><a href="#cb2-15"></a>  mle<span class="sc">$</span>objective <span class="sc">-</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>(<span class="dv">2</span> <span class="sc">*</span> pi) <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>(<span class="fu">drop</span>(H))</span>
-<span id="cb2-16"><a href="#cb2-16"></a>}</span>
-<span id="cb2-17"><a href="#cb2-17"></a></span>
-<span id="cb2-18"><a href="#cb2-18"></a><span class="fu">nb_approx</span>(<span class="dv">3</span>, <span class="fl">0.25</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div id="my-long-container" style="height: 400px; border: 1px solid #ccc;">
+<div class="cell" data-layout-align="center">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1"></a><span class="do">## Equivalent to NB</span></span>
+<span id="cb6-2"><a href="#cb6-2"></a>r <span class="ot">&lt;-</span> <span class="dv">5</span></span>
+<span id="cb6-3"><a href="#cb6-3"></a>prob <span class="ot">&lt;-</span> <span class="fl">0.25</span></span>
+<span id="cb6-4"><a href="#cb6-4"></a>lambda <span class="ot">&lt;-</span> <span class="fu">rgamma</span>(<span class="dv">1</span>, r, prob<span class="sc">/</span>(<span class="dv">1</span><span class="sc">-</span>prob))</span>
+<span id="cb6-5"><a href="#cb6-5"></a>obs <span class="ot">&lt;-</span> <span class="fu">rpois</span>(<span class="dv">1</span>, lambda)</span>
+<span id="cb6-6"><a href="#cb6-6"></a></span>
+<span id="cb6-7"><a href="#cb6-7"></a>pois_gamma <span class="ot">&lt;-</span> \(theta){</span>
+<span id="cb6-8"><a href="#cb6-8"></a>  <span class="sc">-</span><span class="fu">dpois</span>(obs, <span class="fu">exp</span>(theta[<span class="dv">1</span>]), <span class="at">log =</span> <span class="cn">TRUE</span>) <span class="sc">-</span> <span class="fu">dgamma</span>(<span class="fu">exp</span>(theta[<span class="dv">1</span>]), theta[<span class="dv">2</span>], theta[<span class="dv">3</span>]<span class="sc">/</span>(<span class="dv">1</span><span class="sc">-</span>theta[<span class="dv">3</span>]), <span class="at">log =</span> <span class="cn">TRUE</span>) <span class="sc">-</span> theta[<span class="dv">1</span>]  <span class="do">## Include Jacobian...</span></span>
+<span id="cb6-9"><a href="#cb6-9"></a>}</span>
+<span id="cb6-10"><a href="#cb6-10"></a><span class="do">## Manual Laplace</span></span>
+<span id="cb6-11"><a href="#cb6-11"></a>nb_approx <span class="ot">&lt;-</span> <span class="cf">function</span>(r, prob) {</span>
+<span id="cb6-12"><a href="#cb6-12"></a>  mle <span class="ot">&lt;-</span> <span class="fu">optimize</span>(\(u){<span class="fu">pois_gamma</span>(<span class="fu">c</span>(u, r, prob))}, <span class="dv">0</span>, <span class="at">lower =</span> <span class="dv">0</span>, <span class="at">upper =</span> <span class="dv">100</span>)</span>
+<span id="cb6-13"><a href="#cb6-13"></a>  u_hat <span class="ot">&lt;-</span> mle<span class="sc">$</span>minimum</span>
+<span id="cb6-14"><a href="#cb6-14"></a>  H <span class="ot">&lt;-</span> pracma<span class="sc">::</span><span class="fu">hessian</span>(\(u){<span class="fu">pois_gamma</span>(<span class="fu">c</span>(u, r, prob))}, u_hat)</span>
+<span id="cb6-15"><a href="#cb6-15"></a>  mle<span class="sc">$</span>objective <span class="sc">-</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>(<span class="dv">2</span> <span class="sc">*</span> pi) <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>(<span class="fu">drop</span>(H))</span>
+<span id="cb6-16"><a href="#cb6-16"></a>}</span>
+<span id="cb6-17"><a href="#cb6-17"></a></span>
+<span id="cb6-18"><a href="#cb6-18"></a><span class="fu">nb_approx</span>(<span class="dv">3</span>, <span class="fl">0.25</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] 2.597467</code></pre>
+<pre><code>[1] 3.403842</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1"></a>F <span class="ot">&lt;-</span> <span class="fu">MakeTape</span>(pois_gamma, <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">0</span>, <span class="dv">0</span>))</span>
-<span id="cb4-2"><a href="#cb4-2"></a>nb_approxc <span class="ot">&lt;-</span> F<span class="sc">$</span><span class="fu">laplace</span>(<span class="dv">1</span>)</span>
-<span id="cb4-3"><a href="#cb4-3"></a><span class="fu">nb_approxc</span>(<span class="fu">c</span>(<span class="dv">3</span>, <span class="fl">0.25</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1"></a>F <span class="ot">&lt;-</span> <span class="fu">MakeTape</span>(pois_gamma, <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">0</span>, <span class="dv">0</span>))</span>
+<span id="cb8-2"><a href="#cb8-2"></a>nb_approxc <span class="ot">&lt;-</span> F<span class="sc">$</span><span class="fu">laplace</span>(<span class="dv">1</span>)</span>
+<span id="cb8-3"><a href="#cb8-3"></a><span class="fu">nb_approxc</span>(<span class="fu">c</span>(<span class="dv">3</span>, <span class="fl">0.25</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] 2.597469</code></pre>
+<pre><code>[1] 3.403842</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1"></a><span class="sc">-</span><span class="fu">dnbinom</span>(obs, <span class="dv">3</span>, <span class="fl">0.25</span>, <span class="at">log =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1"></a><span class="sc">-</span><span class="fu">dnbinom</span>(obs, <span class="dv">3</span>, <span class="fl">0.25</span>, <span class="at">log =</span> <span class="cn">TRUE</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] 2.589139</code></pre>
+<pre><code>[1] 3.39894</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1"></a>size <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="fl">0.1</span>, <span class="dv">10</span>, <span class="fl">0.1</span>)</span>
-<span id="cb8-2"><a href="#cb8-2"></a>fapprox <span class="ot">&lt;-</span> <span class="fu">sapply</span>(size, nb_approx, <span class="at">prob =</span> <span class="fl">0.25</span>)</span>
-<span id="cb8-3"><a href="#cb8-3"></a>ftrue <span class="ot">&lt;-</span> <span class="fu">sapply</span>(size, dnbinom, <span class="at">x =</span> obs, <span class="at">prob =</span> <span class="fl">0.25</span>, <span class="at">log =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb8-4"><a href="#cb8-4"></a><span class="fu">plot</span>(size, <span class="fu">exp</span>(<span class="sc">-</span>fapprox), <span class="at">type =</span> <span class="st">&quot;l&quot;</span>, <span class="at">ylab =</span> <span class="st">&quot;L(size)&quot;</span>)</span>
-<span id="cb8-5"><a href="#cb8-5"></a><span class="fu">lines</span>(size, <span class="fu">exp</span>(ftrue), <span class="at">type =</span> <span class="st">&quot;l&quot;</span>, <span class="at">col =</span> <span class="st">&#39;red&#39;</span>, <span class="at">lty =</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1"></a>size <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="fl">0.1</span>, <span class="dv">10</span>, <span class="fl">0.1</span>)</span>
+<span id="cb12-2"><a href="#cb12-2"></a>fapprox <span class="ot">&lt;-</span> <span class="fu">sapply</span>(size, nb_approx, <span class="at">prob =</span> <span class="fl">0.25</span>)</span>
+<span id="cb12-3"><a href="#cb12-3"></a>ftrue <span class="ot">&lt;-</span> <span class="fu">sapply</span>(size, dnbinom, <span class="at">x =</span> obs, <span class="at">prob =</span> <span class="fl">0.25</span>, <span class="at">log =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb12-4"><a href="#cb12-4"></a><span class="fu">plot</span>(size, <span class="fu">exp</span>(<span class="sc">-</span>fapprox), <span class="at">type =</span> <span class="st">&quot;l&quot;</span>, <span class="at">ylab =</span> <span class="st">&quot;L(size)&quot;</span>)</span>
+<span id="cb12-5"><a href="#cb12-5"></a><span class="fu">lines</span>(size, <span class="fu">exp</span>(ftrue), <span class="at">type =</span> <span class="st">&quot;l&quot;</span>, <span class="at">col =</span> <span class="st">&#39;red&#39;</span>, <span class="at">lty =</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
-<p><img data-src="data:image/png;base64,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" style="width:100.0%"></p>
+<div class="quarto-figure quarto-figure-center">
+<figure>
+<p><img data-src="data:image/png;base64,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" style="width:75.0%"></p>
+</figure>
+</div>
 </div>
 </div>
 </div>
@@ -1387,43 +1426,43 @@ margin-right: 0; }
 <li>When you have normally distributed intercept, and normal data, the marginal likelihood of a group of observations is multivariate normal.</li>
 </ul>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1"></a>u <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(<span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">2</span> )</span>
-<span id="cb9-2"><a href="#cb9-2"></a>x <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(<span class="dv">5</span>, <span class="dv">1</span><span class="sc">+</span>u, <span class="fl">1.5</span>)</span>
-<span id="cb9-3"><a href="#cb9-3"></a></span>
-<span id="cb9-4"><a href="#cb9-4"></a>nll_joint <span class="ot">&lt;-</span> <span class="cf">function</span>(theta) {</span>
-<span id="cb9-5"><a href="#cb9-5"></a>  <span class="sc">-</span><span class="fu">sum</span>(<span class="fu">dnorm</span>(x, theta[<span class="dv">1</span>] <span class="sc">+</span> theta[<span class="dv">2</span>], theta[<span class="dv">3</span>], <span class="at">log =</span> <span class="cn">TRUE</span>)) <span class="sc">-</span> <span class="fu">dnorm</span>(theta[<span class="dv">1</span>], <span class="dv">0</span>, theta[<span class="dv">4</span>], <span class="at">log =</span> <span class="cn">TRUE</span>) </span>
-<span id="cb9-6"><a href="#cb9-6"></a>}</span>
-<span id="cb9-7"><a href="#cb9-7"></a></span>
-<span id="cb9-8"><a href="#cb9-8"></a><span class="do">## Manual Laplace</span></span>
-<span id="cb9-9"><a href="#cb9-9"></a>nll_approx <span class="ot">&lt;-</span> <span class="cf">function</span>(mu, sd, sdre) {</span>
-<span id="cb9-10"><a href="#cb9-10"></a>  mle <span class="ot">&lt;-</span> <span class="fu">optimize</span>(\(u){<span class="fu">nll_joint</span>(<span class="fu">c</span>(u, mu, sd, sdre))}, <span class="dv">0</span>, <span class="at">lower =</span> <span class="sc">-</span><span class="dv">100</span>, <span class="at">upper =</span> <span class="dv">100</span>)</span>
-<span id="cb9-11"><a href="#cb9-11"></a>  u_hat <span class="ot">&lt;-</span> mle<span class="sc">$</span>minimum</span>
-<span id="cb9-12"><a href="#cb9-12"></a>  H <span class="ot">&lt;-</span> pracma<span class="sc">::</span><span class="fu">hessian</span>(\(u){<span class="fu">nll_joint</span>(<span class="fu">c</span>(u, mu, sd, sdre))}, u_hat)</span>
-<span id="cb9-13"><a href="#cb9-13"></a>  mle<span class="sc">$</span>objective <span class="sc">-</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>(<span class="dv">2</span> <span class="sc">*</span> pi) <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>(<span class="fu">as.numeric</span>(H))</span>
-<span id="cb9-14"><a href="#cb9-14"></a>}</span>
-<span id="cb9-15"><a href="#cb9-15"></a></span>
-<span id="cb9-16"><a href="#cb9-16"></a><span class="do">## RTMB approx:</span></span>
-<span id="cb9-17"><a href="#cb9-17"></a>nll_rtmb <span class="ot">&lt;-</span> <span class="fu">MakeTape</span>(nll_joint, <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">1</span>))</span>
-<span id="cb9-18"><a href="#cb9-18"></a>nll_approxc <span class="ot">&lt;-</span> nll_rtmb<span class="sc">$</span><span class="fu">laplace</span>(<span class="dv">1</span>)</span>
-<span id="cb9-19"><a href="#cb9-19"></a></span>
-<span id="cb9-20"><a href="#cb9-20"></a><span class="do">## Known marginal distribution</span></span>
-<span id="cb9-21"><a href="#cb9-21"></a>nll_exact <span class="ot">&lt;-</span> <span class="cf">function</span>(theta) {</span>
-<span id="cb9-22"><a href="#cb9-22"></a>  Sigma <span class="ot">&lt;-</span> <span class="fu">matrix</span>(theta[<span class="dv">3</span>]<span class="sc">^</span><span class="dv">2</span>, <span class="at">ncol =</span> <span class="fu">length</span>(x), <span class="at">nrow =</span> <span class="fu">length</span>(x)) <span class="sc">+</span> theta[<span class="dv">2</span>]<span class="sc">^</span><span class="dv">2</span><span class="sc">*</span><span class="fu">diag</span>(<span class="fu">length</span>(x))</span>
-<span id="cb9-23"><a href="#cb9-23"></a>  <span class="sc">-</span><span class="fu">dmvnorm</span>(x, <span class="at">mu =</span> <span class="fu">rep</span>(theta[<span class="dv">1</span>], <span class="fu">length</span>(x)), <span class="at">Sigma =</span> Sigma, <span class="at">log =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb9-24"><a href="#cb9-24"></a>}</span>
-<span id="cb9-25"><a href="#cb9-25"></a></span>
-<span id="cb9-26"><a href="#cb9-26"></a><span class="co"># Test it:</span></span>
-<span id="cb9-27"><a href="#cb9-27"></a><span class="fu">nll_approx</span>(<span class="dv">1</span>, <span class="fl">1.5</span>, <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1"></a>u <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(<span class="dv">1</span>, <span class="dv">0</span>, <span class="dv">2</span> )</span>
+<span id="cb13-2"><a href="#cb13-2"></a>x <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(<span class="dv">5</span>, <span class="dv">1</span><span class="sc">+</span>u, <span class="fl">1.5</span>)</span>
+<span id="cb13-3"><a href="#cb13-3"></a></span>
+<span id="cb13-4"><a href="#cb13-4"></a>nll_joint <span class="ot">&lt;-</span> <span class="cf">function</span>(theta) {</span>
+<span id="cb13-5"><a href="#cb13-5"></a>  <span class="sc">-</span><span class="fu">sum</span>(<span class="fu">dnorm</span>(x, theta[<span class="dv">1</span>] <span class="sc">+</span> theta[<span class="dv">2</span>], theta[<span class="dv">3</span>], <span class="at">log =</span> <span class="cn">TRUE</span>)) <span class="sc">-</span> <span class="fu">dnorm</span>(theta[<span class="dv">1</span>], <span class="dv">0</span>, theta[<span class="dv">4</span>], <span class="at">log =</span> <span class="cn">TRUE</span>) </span>
+<span id="cb13-6"><a href="#cb13-6"></a>}</span>
+<span id="cb13-7"><a href="#cb13-7"></a></span>
+<span id="cb13-8"><a href="#cb13-8"></a><span class="do">## Manual Laplace</span></span>
+<span id="cb13-9"><a href="#cb13-9"></a>nll_approx <span class="ot">&lt;-</span> <span class="cf">function</span>(mu, sd, sdre) {</span>
+<span id="cb13-10"><a href="#cb13-10"></a>  mle <span class="ot">&lt;-</span> <span class="fu">optimize</span>(\(u){<span class="fu">nll_joint</span>(<span class="fu">c</span>(u, mu, sd, sdre))}, <span class="dv">0</span>, <span class="at">lower =</span> <span class="sc">-</span><span class="dv">100</span>, <span class="at">upper =</span> <span class="dv">100</span>)</span>
+<span id="cb13-11"><a href="#cb13-11"></a>  u_hat <span class="ot">&lt;-</span> mle<span class="sc">$</span>minimum</span>
+<span id="cb13-12"><a href="#cb13-12"></a>  H <span class="ot">&lt;-</span> pracma<span class="sc">::</span><span class="fu">hessian</span>(\(u){<span class="fu">nll_joint</span>(<span class="fu">c</span>(u, mu, sd, sdre))}, u_hat)</span>
+<span id="cb13-13"><a href="#cb13-13"></a>  mle<span class="sc">$</span>objective <span class="sc">-</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>(<span class="dv">2</span> <span class="sc">*</span> pi) <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>(<span class="fu">as.numeric</span>(H))</span>
+<span id="cb13-14"><a href="#cb13-14"></a>}</span>
+<span id="cb13-15"><a href="#cb13-15"></a></span>
+<span id="cb13-16"><a href="#cb13-16"></a><span class="do">## RTMB approx:</span></span>
+<span id="cb13-17"><a href="#cb13-17"></a>nll_rtmb <span class="ot">&lt;-</span> <span class="fu">MakeTape</span>(nll_joint, <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">1</span>))</span>
+<span id="cb13-18"><a href="#cb13-18"></a>nll_approxc <span class="ot">&lt;-</span> nll_rtmb<span class="sc">$</span><span class="fu">laplace</span>(<span class="dv">1</span>)</span>
+<span id="cb13-19"><a href="#cb13-19"></a></span>
+<span id="cb13-20"><a href="#cb13-20"></a><span class="do">## Known marginal distribution</span></span>
+<span id="cb13-21"><a href="#cb13-21"></a>nll_exact <span class="ot">&lt;-</span> <span class="cf">function</span>(theta) {</span>
+<span id="cb13-22"><a href="#cb13-22"></a>  Sigma <span class="ot">&lt;-</span> <span class="fu">matrix</span>(theta[<span class="dv">3</span>]<span class="sc">^</span><span class="dv">2</span>, <span class="at">ncol =</span> <span class="fu">length</span>(x), <span class="at">nrow =</span> <span class="fu">length</span>(x)) <span class="sc">+</span> theta[<span class="dv">2</span>]<span class="sc">^</span><span class="dv">2</span><span class="sc">*</span><span class="fu">diag</span>(<span class="fu">length</span>(x))</span>
+<span id="cb13-23"><a href="#cb13-23"></a>  <span class="sc">-</span><span class="fu">dmvnorm</span>(x, <span class="at">mu =</span> <span class="fu">rep</span>(theta[<span class="dv">1</span>], <span class="fu">length</span>(x)), <span class="at">Sigma =</span> Sigma, <span class="at">log =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb13-24"><a href="#cb13-24"></a>}</span>
+<span id="cb13-25"><a href="#cb13-25"></a></span>
+<span id="cb13-26"><a href="#cb13-26"></a><span class="co"># Test it:</span></span>
+<span id="cb13-27"><a href="#cb13-27"></a><span class="fu">nll_approx</span>(<span class="dv">1</span>, <span class="fl">1.5</span>, <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] 11.71208</code></pre>
+<pre><code>[1] 9.619597</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1"></a><span class="fu">nll_approxc</span>(<span class="fu">c</span>(<span class="dv">1</span>, <span class="fl">1.5</span>, <span class="dv">2</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1"></a><span class="fu">nll_approxc</span>(<span class="fu">c</span>(<span class="dv">1</span>, <span class="fl">1.5</span>, <span class="dv">2</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] 11.71208</code></pre>
+<pre><code>[1] 9.619597</code></pre>
 </div>
-<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1"></a><span class="fu">nll_exact</span>(<span class="fu">c</span>(<span class="dv">1</span>, <span class="fl">1.5</span>, <span class="dv">2</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1"></a><span class="fu">nll_exact</span>(<span class="fu">c</span>(<span class="dv">1</span>, <span class="fl">1.5</span>, <span class="dv">2</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>[1] 11.71208</code></pre>
+<pre><code>[1] 9.619597</code></pre>
 </div>
 </div>
 </section>
@@ -1438,15 +1477,15 @@ margin-right: 0; }
 </ul></li>
 </ul>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll, <span class="at">parameters =</span> parameters, <span class="at">random =</span> <span class="st">&quot;re&quot;</span>, <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb15-2"><a href="#cb15-2"></a>fit <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj<span class="sc">$</span>par, obj<span class="sc">$</span>fn, obj<span class="sc">$</span>gr)</span>
-<span id="cb15-3"><a href="#cb15-3"></a>check <span class="ot">&lt;-</span> <span class="fu">checkConsistency</span>(obj)</span>
-<span id="cb15-4"><a href="#cb15-4"></a>s <span class="ot">&lt;-</span> <span class="fu">summary</span>(check)</span>
-<span id="cb15-5"><a href="#cb15-5"></a>s<span class="sc">$</span>marginal<span class="sc">$</span>p.value</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1"></a>obj <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll, <span class="at">parameters =</span> parameters, <span class="at">random =</span> <span class="st">&quot;re&quot;</span>, <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb19-2"><a href="#cb19-2"></a>fit <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj<span class="sc">$</span>par, obj<span class="sc">$</span>fn, obj<span class="sc">$</span>gr)</span>
+<span id="cb19-3"><a href="#cb19-3"></a>check <span class="ot">&lt;-</span> <span class="fu">checkConsistency</span>(obj)</span>
+<span id="cb19-4"><a href="#cb19-4"></a>s <span class="ot">&lt;-</span> <span class="fu">summary</span>(check)</span>
+<span id="cb19-5"><a href="#cb19-5"></a>s<span class="sc">$</span>marginal<span class="sc">$</span>p.value</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1"></a>resids <span class="ot">&lt;-</span> <span class="fu">oneStepPredict</span>(obj, <span class="at">discrete=</span><span class="cn">FALSE</span>, <span class="at">trace=</span><span class="cn">FALSE</span>)</span>
-<span id="cb16-2"><a href="#cb16-2"></a><span class="fu">qqnorm</span>(resids<span class="sc">$</span>res); <span class="fu">abline</span>(<span class="dv">0</span>,<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell" data-layout-align="center">
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1"></a>resids <span class="ot">&lt;-</span> <span class="fu">oneStepPredict</span>(obj, <span class="at">discrete=</span><span class="cn">FALSE</span>, <span class="at">trace=</span><span class="cn">FALSE</span>)</span>
+<span id="cb20-2"><a href="#cb20-2"></a><span class="fu">qqnorm</span>(resids<span class="sc">$</span>res); <span class="fu">abline</span>(<span class="dv">0</span>,<span class="dv">1</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="time-varying-productivity" class="slide level2">
@@ -1478,108 +1517,108 @@ a_0 \sim N(0, \frac{\epsilon^2}{1-\phi^2})
 <li>Need to temporally align the data!</li>
 </ul>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1"></a>sox <span class="ot">&lt;-</span> sox <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">time =</span> yr <span class="sc">-</span> <span class="fu">min</span>(yr) <span class="sc">+</span> <span class="dv">1</span>)</span>
-<span id="cb17-2"><a href="#cb17-2"></a>nyears <span class="ot">&lt;-</span> <span class="fu">max</span>(sox<span class="sc">$</span>time)</span>
-<span id="cb17-3"><a href="#cb17-3"></a>minyear <span class="ot">&lt;-</span> <span class="fu">min</span>(sox<span class="sc">$</span>yr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1"></a>sox <span class="ot">&lt;-</span> sox <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">time =</span> yr <span class="sc">-</span> <span class="fu">min</span>(yr) <span class="sc">+</span> <span class="dv">1</span>)</span>
+<span id="cb21-2"><a href="#cb21-2"></a>nyears <span class="ot">&lt;-</span> <span class="fu">max</span>(sox<span class="sc">$</span>time)</span>
+<span id="cb21-3"><a href="#cb21-3"></a>minyear <span class="ot">&lt;-</span> <span class="fu">min</span>(sox<span class="sc">$</span>yr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="sockeye-time-varying-producitivity-1" class="slide level2">
 <h2>Sockeye Time Varying Producitivity</h2>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1"></a>parameters <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb18-2"><a href="#cb18-2"></a>  <span class="at">alpha0 =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">5</span>),</span>
-<span id="cb18-3"><a href="#cb18-3"></a>  <span class="at">re =</span> <span class="fu">rnorm</span>(nstocks),</span>
-<span id="cb18-4"><a href="#cb18-4"></a>  <span class="at">logbeta =</span> <span class="fu">runif</span>(nstocks, <span class="dv">0</span>, <span class="dv">1</span>),</span>
-<span id="cb18-5"><a href="#cb18-5"></a>  <span class="at">logsigma =</span> <span class="fu">runif</span>(nstocks, <span class="dv">3</span>, <span class="dv">5</span>),</span>
-<span id="cb18-6"><a href="#cb18-6"></a>  <span class="at">logsigma_re =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="fl">0.5</span>, <span class="dv">2</span>),</span>
-<span id="cb18-7"><a href="#cb18-7"></a>  <span class="at">re_time =</span> <span class="fu">rnorm</span>(nyears),</span>
-<span id="cb18-8"><a href="#cb18-8"></a>  <span class="at">logitphi =</span> <span class="dv">0</span>,</span>
-<span id="cb18-9"><a href="#cb18-9"></a>  <span class="at">logsigma_time =</span> <span class="dv">0</span></span>
-<span id="cb18-10"><a href="#cb18-10"></a>)</span>
-<span id="cb18-11"><a href="#cb18-11"></a></span>
-<span id="cb18-12"><a href="#cb18-12"></a>negll_ar <span class="ot">&lt;-</span> <span class="cf">function</span>(pars){</span>
-<span id="cb18-13"><a href="#cb18-13"></a>  </span>
-<span id="cb18-14"><a href="#cb18-14"></a>  <span class="fu">getAll</span>(pars, sox, <span class="at">warn =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb18-15"><a href="#cb18-15"></a>  beta <span class="ot">&lt;-</span> <span class="fu">exp</span>(logbeta)</span>
-<span id="cb18-16"><a href="#cb18-16"></a>  </span>
-<span id="cb18-17"><a href="#cb18-17"></a>  sigma <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma)</span>
-<span id="cb18-18"><a href="#cb18-18"></a>  sigma_re <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_re)</span>
-<span id="cb18-19"><a href="#cb18-19"></a>  sigma_time <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_time)</span>
-<span id="cb18-20"><a href="#cb18-20"></a>  phi <span class="ot">&lt;-</span> <span class="dv">2</span><span class="sc">*</span><span class="fu">plogis</span>(logitphi)<span class="sc">-</span><span class="dv">1</span></span>
-<span id="cb18-21"><a href="#cb18-21"></a></span>
-<span id="cb18-22"><a href="#cb18-22"></a>  alpha_stock <span class="ot">&lt;-</span> re <span class="sc">+</span> alpha0</span>
-<span id="cb18-23"><a href="#cb18-23"></a>  <span class="fu">ADREPORT</span>(alpha_stock)</span>
-<span id="cb18-24"><a href="#cb18-24"></a>  </span>
-<span id="cb18-25"><a href="#cb18-25"></a>  mu <span class="ot">&lt;-</span> alpha_stock[stock] <span class="sc">+</span> re_time[time] <span class="sc">-</span> beta[stock]<span class="sc">*</span>spawners_scaled</span>
-<span id="cb18-26"><a href="#cb18-26"></a>  logRS <span class="ot">&lt;-</span> <span class="fu">OBS</span>(logRS)</span>
-<span id="cb18-27"><a href="#cb18-27"></a>  </span>
-<span id="cb18-28"><a href="#cb18-28"></a>  ll <span class="ot">&lt;-</span> <span class="fu">dnorm</span>(re_time[<span class="dv">1</span>], <span class="dv">0</span>, <span class="fu">sqrt</span>(sigma_time<span class="sc">^</span><span class="dv">2</span><span class="sc">/</span>(<span class="dv">1</span><span class="sc">-</span>phi<span class="sc">^</span><span class="dv">2</span>)), <span class="at">log =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb18-29"><a href="#cb18-29"></a>  <span class="cf">for</span>( t <span class="cf">in</span> <span class="dv">2</span><span class="sc">:</span>nyears ) </span>
-<span id="cb18-30"><a href="#cb18-30"></a>    ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">dnorm</span>(re_time[t], phi<span class="sc">*</span>re_time[t<span class="dv">-1</span>], sigma_time, <span class="at">log =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb18-31"><a href="#cb18-31"></a></span>
-<span id="cb18-32"><a href="#cb18-32"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(re, <span class="dv">0</span>, sigma_re, <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb18-33"><a href="#cb18-33"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(logRS, mu, sigma[stock], <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb18-34"><a href="#cb18-34"></a>  </span>
-<span id="cb18-35"><a href="#cb18-35"></a>  <span class="fu">REPORT</span>(mu)</span>
-<span id="cb18-36"><a href="#cb18-36"></a>  <span class="fu">REPORT</span>(re_time)</span>
-<span id="cb18-37"><a href="#cb18-37"></a>  </span>
-<span id="cb18-38"><a href="#cb18-38"></a>  <span class="fu">return</span>(<span class="sc">-</span>ll)</span>
-<span id="cb18-39"><a href="#cb18-39"></a>}</span>
-<span id="cb18-40"><a href="#cb18-40"></a></span>
-<span id="cb18-41"><a href="#cb18-41"></a>obj_ar <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll_ar, <span class="at">parameters =</span> parameters, <span class="at">random =</span> <span class="fu">c</span>(<span class="st">&quot;re&quot;</span>, <span class="st">&quot;re_time&quot;</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb18-42"><a href="#cb18-42"></a>fit_ar <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj_ar<span class="sc">$</span>par, obj_ar<span class="sc">$</span>fn, obj_ar<span class="sc">$</span>gr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1"></a>parameters <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb22-2"><a href="#cb22-2"></a>  <span class="at">alpha0 =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">5</span>),</span>
+<span id="cb22-3"><a href="#cb22-3"></a>  <span class="at">re =</span> <span class="fu">rnorm</span>(nstocks),</span>
+<span id="cb22-4"><a href="#cb22-4"></a>  <span class="at">logbeta =</span> <span class="fu">runif</span>(nstocks, <span class="dv">0</span>, <span class="dv">1</span>),</span>
+<span id="cb22-5"><a href="#cb22-5"></a>  <span class="at">logsigma =</span> <span class="fu">runif</span>(nstocks, <span class="dv">3</span>, <span class="dv">5</span>),</span>
+<span id="cb22-6"><a href="#cb22-6"></a>  <span class="at">logsigma_re =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="fl">0.5</span>, <span class="dv">2</span>),</span>
+<span id="cb22-7"><a href="#cb22-7"></a>  <span class="at">re_time =</span> <span class="fu">rnorm</span>(nyears),</span>
+<span id="cb22-8"><a href="#cb22-8"></a>  <span class="at">logitphi =</span> <span class="dv">0</span>,</span>
+<span id="cb22-9"><a href="#cb22-9"></a>  <span class="at">logsigma_time =</span> <span class="dv">0</span></span>
+<span id="cb22-10"><a href="#cb22-10"></a>)</span>
+<span id="cb22-11"><a href="#cb22-11"></a></span>
+<span id="cb22-12"><a href="#cb22-12"></a>negll_ar <span class="ot">&lt;-</span> <span class="cf">function</span>(pars){</span>
+<span id="cb22-13"><a href="#cb22-13"></a>  </span>
+<span id="cb22-14"><a href="#cb22-14"></a>  <span class="fu">getAll</span>(pars, sox, <span class="at">warn =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb22-15"><a href="#cb22-15"></a>  beta <span class="ot">&lt;-</span> <span class="fu">exp</span>(logbeta)</span>
+<span id="cb22-16"><a href="#cb22-16"></a>  </span>
+<span id="cb22-17"><a href="#cb22-17"></a>  sigma <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma)</span>
+<span id="cb22-18"><a href="#cb22-18"></a>  sigma_re <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_re)</span>
+<span id="cb22-19"><a href="#cb22-19"></a>  sigma_time <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_time)</span>
+<span id="cb22-20"><a href="#cb22-20"></a>  phi <span class="ot">&lt;-</span> <span class="dv">2</span><span class="sc">*</span><span class="fu">plogis</span>(logitphi)<span class="sc">-</span><span class="dv">1</span></span>
+<span id="cb22-21"><a href="#cb22-21"></a></span>
+<span id="cb22-22"><a href="#cb22-22"></a>  alpha_stock <span class="ot">&lt;-</span> re <span class="sc">+</span> alpha0</span>
+<span id="cb22-23"><a href="#cb22-23"></a>  <span class="fu">ADREPORT</span>(alpha_stock)</span>
+<span id="cb22-24"><a href="#cb22-24"></a>  </span>
+<span id="cb22-25"><a href="#cb22-25"></a>  mu <span class="ot">&lt;-</span> alpha_stock[stock] <span class="sc">+</span> re_time[time] <span class="sc">-</span> beta[stock]<span class="sc">*</span>spawners_scaled</span>
+<span id="cb22-26"><a href="#cb22-26"></a>  logRS <span class="ot">&lt;-</span> <span class="fu">OBS</span>(logRS)</span>
+<span id="cb22-27"><a href="#cb22-27"></a>  </span>
+<span id="cb22-28"><a href="#cb22-28"></a>  ll <span class="ot">&lt;-</span> <span class="fu">dnorm</span>(re_time[<span class="dv">1</span>], <span class="dv">0</span>, <span class="fu">sqrt</span>(sigma_time<span class="sc">^</span><span class="dv">2</span><span class="sc">/</span>(<span class="dv">1</span><span class="sc">-</span>phi<span class="sc">^</span><span class="dv">2</span>)), <span class="at">log =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb22-29"><a href="#cb22-29"></a>  <span class="cf">for</span>( t <span class="cf">in</span> <span class="dv">2</span><span class="sc">:</span>nyears ) </span>
+<span id="cb22-30"><a href="#cb22-30"></a>    ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">dnorm</span>(re_time[t], phi<span class="sc">*</span>re_time[t<span class="dv">-1</span>], sigma_time, <span class="at">log =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb22-31"><a href="#cb22-31"></a></span>
+<span id="cb22-32"><a href="#cb22-32"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(re, <span class="dv">0</span>, sigma_re, <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb22-33"><a href="#cb22-33"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(logRS, mu, sigma[stock], <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb22-34"><a href="#cb22-34"></a>  </span>
+<span id="cb22-35"><a href="#cb22-35"></a>  <span class="fu">REPORT</span>(mu)</span>
+<span id="cb22-36"><a href="#cb22-36"></a>  <span class="fu">REPORT</span>(re_time)</span>
+<span id="cb22-37"><a href="#cb22-37"></a>  </span>
+<span id="cb22-38"><a href="#cb22-38"></a>  <span class="fu">return</span>(<span class="sc">-</span>ll)</span>
+<span id="cb22-39"><a href="#cb22-39"></a>}</span>
+<span id="cb22-40"><a href="#cb22-40"></a></span>
+<span id="cb22-41"><a href="#cb22-41"></a>obj_ar <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll_ar, <span class="at">parameters =</span> parameters, <span class="at">random =</span> <span class="fu">c</span>(<span class="st">&quot;re&quot;</span>, <span class="st">&quot;re_time&quot;</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb22-42"><a href="#cb22-42"></a>fit_ar <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj_ar<span class="sc">$</span>par, obj_ar<span class="sc">$</span>fn, obj_ar<span class="sc">$</span>gr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="plot-time-effect" class="slide level2">
 <h2>Plot Time Effect</h2>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1"></a>re_time <span class="ot">&lt;-</span> obj_ar<span class="sc">$</span><span class="fu">report</span>()<span class="sc">$</span>re_time</span>
-<span id="cb19-2"><a href="#cb19-2"></a><span class="fu">ggplot</span>() <span class="sc">+</span> <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">x =</span> minyear<span class="sc">+</span><span class="dv">0</span><span class="sc">:</span>(nyears<span class="dv">-1</span>), <span class="at">y =</span> re_time)) <span class="sc">+</span> <span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="dv">0</span>, <span class="at">col =</span> <span class="st">&#39;red&#39;</span>, <span class="at">linetype =</span> <span class="st">&#39;dashed&#39;</span>) <span class="sc">+</span> <span class="fu">xlab</span>(<span class="st">&quot;Year&quot;</span>) <span class="sc">+</span> <span class="fu">ylab</span>(<span class="st">&quot;Productivity Time Effect&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1"></a>re_time <span class="ot">&lt;-</span> obj_ar<span class="sc">$</span><span class="fu">report</span>()<span class="sc">$</span>re_time</span>
+<span id="cb23-2"><a href="#cb23-2"></a><span class="fu">ggplot</span>() <span class="sc">+</span> <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">x =</span> minyear<span class="sc">+</span><span class="dv">0</span><span class="sc">:</span>(nyears<span class="dv">-1</span>), <span class="at">y =</span> re_time)) <span class="sc">+</span> <span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="dv">0</span>, <span class="at">col =</span> <span class="st">&#39;red&#39;</span>, <span class="at">linetype =</span> <span class="st">&#39;dashed&#39;</span>) <span class="sc">+</span> <span class="fu">xlab</span>(<span class="st">&quot;Year&quot;</span>) <span class="sc">+</span> <span class="fu">ylab</span>(<span class="st">&quot;Productivity Time Effect&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="using-rtmbs-ar-distribution" class="slide level2">
 <h2>Using RTMB’s AR Distribution</h2>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1"></a>parameters <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb20-2"><a href="#cb20-2"></a>  <span class="at">alpha0 =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">5</span>),</span>
-<span id="cb20-3"><a href="#cb20-3"></a>  <span class="at">re =</span> <span class="fu">rnorm</span>(nstocks),</span>
-<span id="cb20-4"><a href="#cb20-4"></a>  <span class="at">logbeta =</span> <span class="fu">runif</span>(nstocks, <span class="dv">0</span>, <span class="dv">1</span>),</span>
-<span id="cb20-5"><a href="#cb20-5"></a>  <span class="at">logsigma =</span> <span class="fu">runif</span>(nstocks, <span class="dv">3</span>, <span class="dv">5</span>),</span>
-<span id="cb20-6"><a href="#cb20-6"></a>  <span class="at">logsigma_re =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="fl">0.5</span>, <span class="dv">2</span>),</span>
-<span id="cb20-7"><a href="#cb20-7"></a>  <span class="at">re_time =</span> <span class="fu">rnorm</span>(nyears),</span>
-<span id="cb20-8"><a href="#cb20-8"></a>  <span class="at">logitphi =</span> <span class="dv">0</span>,</span>
-<span id="cb20-9"><a href="#cb20-9"></a>  <span class="at">logsigma_time =</span> <span class="dv">0</span></span>
-<span id="cb20-10"><a href="#cb20-10"></a>)</span>
-<span id="cb20-11"><a href="#cb20-11"></a></span>
-<span id="cb20-12"><a href="#cb20-12"></a>negll_autoreg <span class="ot">&lt;-</span> <span class="cf">function</span>(pars){</span>
-<span id="cb20-13"><a href="#cb20-13"></a>  </span>
-<span id="cb20-14"><a href="#cb20-14"></a>  <span class="fu">getAll</span>(pars, sox, <span class="at">warn =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb20-15"><a href="#cb20-15"></a>  beta <span class="ot">&lt;-</span> <span class="fu">exp</span>(logbeta)</span>
-<span id="cb20-16"><a href="#cb20-16"></a>  </span>
-<span id="cb20-17"><a href="#cb20-17"></a>  sigma <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma)</span>
-<span id="cb20-18"><a href="#cb20-18"></a>  sigma_re <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_re)</span>
-<span id="cb20-19"><a href="#cb20-19"></a>  sigma_time <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_time)</span>
-<span id="cb20-20"><a href="#cb20-20"></a>  phi <span class="ot">&lt;-</span> <span class="dv">2</span><span class="sc">*</span><span class="fu">plogis</span>(logitphi)<span class="sc">-</span><span class="dv">1</span></span>
-<span id="cb20-21"><a href="#cb20-21"></a></span>
-<span id="cb20-22"><a href="#cb20-22"></a>  alpha_stock <span class="ot">&lt;-</span> re <span class="sc">+</span> alpha0</span>
-<span id="cb20-23"><a href="#cb20-23"></a>  <span class="fu">ADREPORT</span>(alpha_stock)</span>
-<span id="cb20-24"><a href="#cb20-24"></a>  </span>
-<span id="cb20-25"><a href="#cb20-25"></a>  mu <span class="ot">&lt;-</span> alpha_stock[stock] <span class="sc">+</span> re_time[time] <span class="sc">-</span> beta[stock]<span class="sc">*</span>spawners_scaled</span>
-<span id="cb20-26"><a href="#cb20-26"></a>  logRS <span class="ot">&lt;-</span> <span class="fu">OBS</span>(logRS)</span>
-<span id="cb20-27"><a href="#cb20-27"></a>  </span>
-<span id="cb20-28"><a href="#cb20-28"></a>  ll <span class="ot">&lt;-</span> <span class="fu">dautoreg</span>(re_time,<span class="at">phi=</span>phi,<span class="at">scale=</span><span class="fu">sqrt</span>(sigma_time<span class="sc">^</span><span class="dv">2</span><span class="sc">/</span>(<span class="dv">1</span><span class="sc">-</span>phi<span class="sc">^</span><span class="dv">2</span>)), <span class="at">log=</span><span class="cn">TRUE</span>)</span>
-<span id="cb20-29"><a href="#cb20-29"></a></span>
-<span id="cb20-30"><a href="#cb20-30"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(re, <span class="dv">0</span>, sigma_re, <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb20-31"><a href="#cb20-31"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(logRS, mu, sigma[stock], <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb20-32"><a href="#cb20-32"></a>  </span>
-<span id="cb20-33"><a href="#cb20-33"></a>  <span class="fu">REPORT</span>(mu)</span>
-<span id="cb20-34"><a href="#cb20-34"></a>  <span class="fu">REPORT</span>(re_time)</span>
-<span id="cb20-35"><a href="#cb20-35"></a>  </span>
-<span id="cb20-36"><a href="#cb20-36"></a>  <span class="fu">return</span>(<span class="sc">-</span>ll)</span>
-<span id="cb20-37"><a href="#cb20-37"></a>}</span>
-<span id="cb20-38"><a href="#cb20-38"></a></span>
-<span id="cb20-39"><a href="#cb20-39"></a>obj_autoreg <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll_autoreg, <span class="at">parameters =</span> parameters, <span class="at">random =</span> <span class="fu">c</span>(<span class="st">&quot;re&quot;</span>, <span class="st">&quot;re_time&quot;</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb20-40"><a href="#cb20-40"></a>fit_autoreg <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj_autoreg<span class="sc">$</span>par, obj_autoreg<span class="sc">$</span>fn, obj_autoreg<span class="sc">$</span>gr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1"></a>parameters <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb24-2"><a href="#cb24-2"></a>  <span class="at">alpha0 =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">5</span>),</span>
+<span id="cb24-3"><a href="#cb24-3"></a>  <span class="at">re =</span> <span class="fu">rnorm</span>(nstocks),</span>
+<span id="cb24-4"><a href="#cb24-4"></a>  <span class="at">logbeta =</span> <span class="fu">runif</span>(nstocks, <span class="dv">0</span>, <span class="dv">1</span>),</span>
+<span id="cb24-5"><a href="#cb24-5"></a>  <span class="at">logsigma =</span> <span class="fu">runif</span>(nstocks, <span class="dv">3</span>, <span class="dv">5</span>),</span>
+<span id="cb24-6"><a href="#cb24-6"></a>  <span class="at">logsigma_re =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="fl">0.5</span>, <span class="dv">2</span>),</span>
+<span id="cb24-7"><a href="#cb24-7"></a>  <span class="at">re_time =</span> <span class="fu">rnorm</span>(nyears),</span>
+<span id="cb24-8"><a href="#cb24-8"></a>  <span class="at">logitphi =</span> <span class="dv">0</span>,</span>
+<span id="cb24-9"><a href="#cb24-9"></a>  <span class="at">logsigma_time =</span> <span class="dv">0</span></span>
+<span id="cb24-10"><a href="#cb24-10"></a>)</span>
+<span id="cb24-11"><a href="#cb24-11"></a></span>
+<span id="cb24-12"><a href="#cb24-12"></a>negll_autoreg <span class="ot">&lt;-</span> <span class="cf">function</span>(pars){</span>
+<span id="cb24-13"><a href="#cb24-13"></a>  </span>
+<span id="cb24-14"><a href="#cb24-14"></a>  <span class="fu">getAll</span>(pars, sox, <span class="at">warn =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb24-15"><a href="#cb24-15"></a>  beta <span class="ot">&lt;-</span> <span class="fu">exp</span>(logbeta)</span>
+<span id="cb24-16"><a href="#cb24-16"></a>  </span>
+<span id="cb24-17"><a href="#cb24-17"></a>  sigma <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma)</span>
+<span id="cb24-18"><a href="#cb24-18"></a>  sigma_re <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_re)</span>
+<span id="cb24-19"><a href="#cb24-19"></a>  sigma_time <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_time)</span>
+<span id="cb24-20"><a href="#cb24-20"></a>  phi <span class="ot">&lt;-</span> <span class="dv">2</span><span class="sc">*</span><span class="fu">plogis</span>(logitphi)<span class="sc">-</span><span class="dv">1</span></span>
+<span id="cb24-21"><a href="#cb24-21"></a></span>
+<span id="cb24-22"><a href="#cb24-22"></a>  alpha_stock <span class="ot">&lt;-</span> re <span class="sc">+</span> alpha0</span>
+<span id="cb24-23"><a href="#cb24-23"></a>  <span class="fu">ADREPORT</span>(alpha_stock)</span>
+<span id="cb24-24"><a href="#cb24-24"></a>  </span>
+<span id="cb24-25"><a href="#cb24-25"></a>  mu <span class="ot">&lt;-</span> alpha_stock[stock] <span class="sc">+</span> re_time[time] <span class="sc">-</span> beta[stock]<span class="sc">*</span>spawners_scaled</span>
+<span id="cb24-26"><a href="#cb24-26"></a>  logRS <span class="ot">&lt;-</span> <span class="fu">OBS</span>(logRS)</span>
+<span id="cb24-27"><a href="#cb24-27"></a>  </span>
+<span id="cb24-28"><a href="#cb24-28"></a>  ll <span class="ot">&lt;-</span> <span class="fu">dautoreg</span>(re_time,<span class="at">phi=</span>phi,<span class="at">scale=</span><span class="fu">sqrt</span>(sigma_time<span class="sc">^</span><span class="dv">2</span><span class="sc">/</span>(<span class="dv">1</span><span class="sc">-</span>phi<span class="sc">^</span><span class="dv">2</span>)), <span class="at">log=</span><span class="cn">TRUE</span>)</span>
+<span id="cb24-29"><a href="#cb24-29"></a></span>
+<span id="cb24-30"><a href="#cb24-30"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(re, <span class="dv">0</span>, sigma_re, <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb24-31"><a href="#cb24-31"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(logRS, mu, sigma[stock], <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb24-32"><a href="#cb24-32"></a>  </span>
+<span id="cb24-33"><a href="#cb24-33"></a>  <span class="fu">REPORT</span>(mu)</span>
+<span id="cb24-34"><a href="#cb24-34"></a>  <span class="fu">REPORT</span>(re_time)</span>
+<span id="cb24-35"><a href="#cb24-35"></a>  </span>
+<span id="cb24-36"><a href="#cb24-36"></a>  <span class="fu">return</span>(<span class="sc">-</span>ll)</span>
+<span id="cb24-37"><a href="#cb24-37"></a>}</span>
+<span id="cb24-38"><a href="#cb24-38"></a></span>
+<span id="cb24-39"><a href="#cb24-39"></a>obj_autoreg <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll_autoreg, <span class="at">parameters =</span> parameters, <span class="at">random =</span> <span class="fu">c</span>(<span class="st">&quot;re&quot;</span>, <span class="st">&quot;re_time&quot;</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb24-40"><a href="#cb24-40"></a>fit_autoreg <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj_autoreg<span class="sc">$</span>par, obj_autoreg<span class="sc">$</span>fn, obj_autoreg<span class="sc">$</span>gr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="as-a-gauss-markov-random-field-distribution" class="slide level2">
@@ -1596,51 +1635,51 @@ a_0 \sim N(0, \frac{\epsilon^2}{1-\phi^2})
 <li><p>You might consider this approach for spatial models such as those presented in <code>sdmTMB</code>.</p></li>
 </ul>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1"></a>parameters <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb21-2"><a href="#cb21-2"></a>  <span class="at">alpha0 =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">5</span>),</span>
-<span id="cb21-3"><a href="#cb21-3"></a>  <span class="at">re =</span> <span class="fu">rnorm</span>(nstocks),</span>
-<span id="cb21-4"><a href="#cb21-4"></a>  <span class="at">logbeta =</span> <span class="fu">runif</span>(nstocks, <span class="dv">0</span>, <span class="dv">1</span>),</span>
-<span id="cb21-5"><a href="#cb21-5"></a>  <span class="at">logsigma =</span> <span class="fu">runif</span>(nstocks, <span class="dv">3</span>, <span class="dv">5</span>),</span>
-<span id="cb21-6"><a href="#cb21-6"></a>  <span class="at">logsigma_re =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="fl">0.5</span>, <span class="dv">2</span>),</span>
-<span id="cb21-7"><a href="#cb21-7"></a>  <span class="at">re_time =</span> <span class="fu">rnorm</span>(nyears),</span>
-<span id="cb21-8"><a href="#cb21-8"></a>  <span class="at">logitphi =</span> <span class="dv">0</span>,</span>
-<span id="cb21-9"><a href="#cb21-9"></a>  <span class="at">logsigma_time =</span> <span class="dv">0</span></span>
-<span id="cb21-10"><a href="#cb21-10"></a>)</span>
-<span id="cb21-11"><a href="#cb21-11"></a></span>
-<span id="cb21-12"><a href="#cb21-12"></a>negll_gmrf <span class="ot">&lt;-</span> <span class="cf">function</span>(pars){</span>
-<span id="cb21-13"><a href="#cb21-13"></a>  </span>
-<span id="cb21-14"><a href="#cb21-14"></a>  <span class="fu">getAll</span>(pars, sox, <span class="at">warn =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb21-15"><a href="#cb21-15"></a>  beta <span class="ot">&lt;-</span> <span class="fu">exp</span>(logbeta)</span>
-<span id="cb21-16"><a href="#cb21-16"></a>  </span>
-<span id="cb21-17"><a href="#cb21-17"></a>  sigma <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma)</span>
-<span id="cb21-18"><a href="#cb21-18"></a>  sigma_re <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_re)</span>
-<span id="cb21-19"><a href="#cb21-19"></a>  sigma_time <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_time)</span>
-<span id="cb21-20"><a href="#cb21-20"></a>  phi <span class="ot">&lt;-</span> <span class="dv">2</span><span class="sc">*</span><span class="fu">plogis</span>(logitphi)<span class="sc">-</span><span class="dv">1</span></span>
-<span id="cb21-21"><a href="#cb21-21"></a></span>
-<span id="cb21-22"><a href="#cb21-22"></a>  alpha_stock <span class="ot">&lt;-</span> re <span class="sc">+</span> alpha0</span>
-<span id="cb21-23"><a href="#cb21-23"></a>  <span class="fu">ADREPORT</span>(alpha_stock)</span>
-<span id="cb21-24"><a href="#cb21-24"></a>  </span>
-<span id="cb21-25"><a href="#cb21-25"></a>  mu <span class="ot">&lt;-</span> alpha_stock[stock] <span class="sc">+</span> re_time[time] <span class="sc">-</span> beta[stock]<span class="sc">*</span>spawners_scaled</span>
-<span id="cb21-26"><a href="#cb21-26"></a>  logRS <span class="ot">&lt;-</span> <span class="fu">OBS</span>(logRS)</span>
-<span id="cb21-27"><a href="#cb21-27"></a></span>
-<span id="cb21-28"><a href="#cb21-28"></a>  Q<span class="ot">&lt;-</span>Matrix<span class="sc">::</span><span class="fu">spMatrix</span>(nyears,nyears)</span>
-<span id="cb21-29"><a href="#cb21-29"></a>  <span class="fu">diag</span>(Q)<span class="ot">&lt;-</span><span class="fu">c</span>(<span class="dv">1</span>,<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">+</span>phi<span class="sc">^</span><span class="dv">2</span>, nyears<span class="dv">-2</span>),<span class="dv">1</span>)</span>
-<span id="cb21-30"><a href="#cb21-30"></a>  Q[<span class="fu">cbind</span>(<span class="dv">2</span><span class="sc">:</span>nyears,<span class="dv">1</span><span class="sc">:</span>(nyears<span class="dv">-1</span>))] <span class="ot">&lt;-</span> <span class="sc">-</span>phi</span>
-<span id="cb21-31"><a href="#cb21-31"></a>  Q[<span class="fu">cbind</span>(<span class="dv">1</span><span class="sc">:</span>(nyears<span class="dv">-1</span>), <span class="dv">2</span><span class="sc">:</span>nyears)] <span class="ot">&lt;-</span> <span class="sc">-</span>phi</span>
-<span id="cb21-32"><a href="#cb21-32"></a>  Q <span class="ot">&lt;-</span> Q<span class="sc">/</span>(sigma_time<span class="sc">^</span><span class="dv">2</span>)</span>
-<span id="cb21-33"><a href="#cb21-33"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">dgmrf</span>(re_time, <span class="at">Q=</span>Q, <span class="at">log=</span><span class="cn">TRUE</span>)</span>
-<span id="cb21-34"><a href="#cb21-34"></a></span>
-<span id="cb21-35"><a href="#cb21-35"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(re, <span class="dv">0</span>, sigma_re, <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb21-36"><a href="#cb21-36"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(logRS, mu, sigma[stock], <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb21-37"><a href="#cb21-37"></a>  </span>
-<span id="cb21-38"><a href="#cb21-38"></a>  <span class="fu">REPORT</span>(mu)</span>
-<span id="cb21-39"><a href="#cb21-39"></a>  <span class="fu">REPORT</span>(re_time)</span>
-<span id="cb21-40"><a href="#cb21-40"></a>  </span>
-<span id="cb21-41"><a href="#cb21-41"></a>  <span class="fu">return</span>(<span class="sc">-</span>ll)</span>
-<span id="cb21-42"><a href="#cb21-42"></a>}</span>
-<span id="cb21-43"><a href="#cb21-43"></a></span>
-<span id="cb21-44"><a href="#cb21-44"></a>obj_gmrf <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll_gmrf, <span class="at">parameters =</span> parameters, <span class="at">random =</span> <span class="fu">c</span>(<span class="st">&quot;re&quot;</span>, <span class="st">&quot;re_time&quot;</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb21-45"><a href="#cb21-45"></a>fit_gmrf <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj_gmrf<span class="sc">$</span>par, obj_gmrf<span class="sc">$</span>fn, obj_gmrf<span class="sc">$</span>gr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1"></a>parameters <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb25-2"><a href="#cb25-2"></a>  <span class="at">alpha0 =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">5</span>),</span>
+<span id="cb25-3"><a href="#cb25-3"></a>  <span class="at">re =</span> <span class="fu">rnorm</span>(nstocks),</span>
+<span id="cb25-4"><a href="#cb25-4"></a>  <span class="at">logbeta =</span> <span class="fu">runif</span>(nstocks, <span class="dv">0</span>, <span class="dv">1</span>),</span>
+<span id="cb25-5"><a href="#cb25-5"></a>  <span class="at">logsigma =</span> <span class="fu">runif</span>(nstocks, <span class="dv">3</span>, <span class="dv">5</span>),</span>
+<span id="cb25-6"><a href="#cb25-6"></a>  <span class="at">logsigma_re =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="fl">0.5</span>, <span class="dv">2</span>),</span>
+<span id="cb25-7"><a href="#cb25-7"></a>  <span class="at">re_time =</span> <span class="fu">rnorm</span>(nyears),</span>
+<span id="cb25-8"><a href="#cb25-8"></a>  <span class="at">logitphi =</span> <span class="dv">0</span>,</span>
+<span id="cb25-9"><a href="#cb25-9"></a>  <span class="at">logsigma_time =</span> <span class="dv">0</span></span>
+<span id="cb25-10"><a href="#cb25-10"></a>)</span>
+<span id="cb25-11"><a href="#cb25-11"></a></span>
+<span id="cb25-12"><a href="#cb25-12"></a>negll_gmrf <span class="ot">&lt;-</span> <span class="cf">function</span>(pars){</span>
+<span id="cb25-13"><a href="#cb25-13"></a>  </span>
+<span id="cb25-14"><a href="#cb25-14"></a>  <span class="fu">getAll</span>(pars, sox, <span class="at">warn =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb25-15"><a href="#cb25-15"></a>  beta <span class="ot">&lt;-</span> <span class="fu">exp</span>(logbeta)</span>
+<span id="cb25-16"><a href="#cb25-16"></a>  </span>
+<span id="cb25-17"><a href="#cb25-17"></a>  sigma <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma)</span>
+<span id="cb25-18"><a href="#cb25-18"></a>  sigma_re <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_re)</span>
+<span id="cb25-19"><a href="#cb25-19"></a>  sigma_time <span class="ot">&lt;-</span> <span class="fu">exp</span>(logsigma_time)</span>
+<span id="cb25-20"><a href="#cb25-20"></a>  phi <span class="ot">&lt;-</span> <span class="dv">2</span><span class="sc">*</span><span class="fu">plogis</span>(logitphi)<span class="sc">-</span><span class="dv">1</span></span>
+<span id="cb25-21"><a href="#cb25-21"></a></span>
+<span id="cb25-22"><a href="#cb25-22"></a>  alpha_stock <span class="ot">&lt;-</span> re <span class="sc">+</span> alpha0</span>
+<span id="cb25-23"><a href="#cb25-23"></a>  <span class="fu">ADREPORT</span>(alpha_stock)</span>
+<span id="cb25-24"><a href="#cb25-24"></a>  </span>
+<span id="cb25-25"><a href="#cb25-25"></a>  mu <span class="ot">&lt;-</span> alpha_stock[stock] <span class="sc">+</span> re_time[time] <span class="sc">-</span> beta[stock]<span class="sc">*</span>spawners_scaled</span>
+<span id="cb25-26"><a href="#cb25-26"></a>  logRS <span class="ot">&lt;-</span> <span class="fu">OBS</span>(logRS)</span>
+<span id="cb25-27"><a href="#cb25-27"></a></span>
+<span id="cb25-28"><a href="#cb25-28"></a>  Q<span class="ot">&lt;-</span>Matrix<span class="sc">::</span><span class="fu">spMatrix</span>(nyears,nyears)</span>
+<span id="cb25-29"><a href="#cb25-29"></a>  <span class="fu">diag</span>(Q)<span class="ot">&lt;-</span><span class="fu">c</span>(<span class="dv">1</span>,<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">+</span>phi<span class="sc">^</span><span class="dv">2</span>, nyears<span class="dv">-2</span>),<span class="dv">1</span>)</span>
+<span id="cb25-30"><a href="#cb25-30"></a>  Q[<span class="fu">cbind</span>(<span class="dv">2</span><span class="sc">:</span>nyears,<span class="dv">1</span><span class="sc">:</span>(nyears<span class="dv">-1</span>))] <span class="ot">&lt;-</span> <span class="sc">-</span>phi</span>
+<span id="cb25-31"><a href="#cb25-31"></a>  Q[<span class="fu">cbind</span>(<span class="dv">1</span><span class="sc">:</span>(nyears<span class="dv">-1</span>), <span class="dv">2</span><span class="sc">:</span>nyears)] <span class="ot">&lt;-</span> <span class="sc">-</span>phi</span>
+<span id="cb25-32"><a href="#cb25-32"></a>  Q <span class="ot">&lt;-</span> Q<span class="sc">/</span>(sigma_time<span class="sc">^</span><span class="dv">2</span>)</span>
+<span id="cb25-33"><a href="#cb25-33"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">dgmrf</span>(re_time, <span class="at">Q=</span>Q, <span class="at">log=</span><span class="cn">TRUE</span>)</span>
+<span id="cb25-34"><a href="#cb25-34"></a></span>
+<span id="cb25-35"><a href="#cb25-35"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(re, <span class="dv">0</span>, sigma_re, <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb25-36"><a href="#cb25-36"></a>  ll <span class="ot">&lt;-</span> ll <span class="sc">+</span> <span class="fu">sum</span>(<span class="fu">dnorm</span>(logRS, mu, sigma[stock], <span class="at">log =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb25-37"><a href="#cb25-37"></a>  </span>
+<span id="cb25-38"><a href="#cb25-38"></a>  <span class="fu">REPORT</span>(mu)</span>
+<span id="cb25-39"><a href="#cb25-39"></a>  <span class="fu">REPORT</span>(re_time)</span>
+<span id="cb25-40"><a href="#cb25-40"></a>  </span>
+<span id="cb25-41"><a href="#cb25-41"></a>  <span class="fu">return</span>(<span class="sc">-</span>ll)</span>
+<span id="cb25-42"><a href="#cb25-42"></a>}</span>
+<span id="cb25-43"><a href="#cb25-43"></a></span>
+<span id="cb25-44"><a href="#cb25-44"></a>obj_gmrf <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll_gmrf, <span class="at">parameters =</span> parameters, <span class="at">random =</span> <span class="fu">c</span>(<span class="st">&quot;re&quot;</span>, <span class="st">&quot;re_time&quot;</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb25-45"><a href="#cb25-45"></a>fit_gmrf <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj_gmrf<span class="sc">$</span>par, obj_gmrf<span class="sc">$</span>fn, obj_gmrf<span class="sc">$</span>gr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="what-is-best" class="slide level2">
@@ -1651,14 +1690,14 @@ a_0 \sim N(0, \frac{\epsilon^2}{1-\phi^2})
 <li>Looping through each year is readable and simplest.</li>
 </ul>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1"></a>init <span class="ot">&lt;-</span> obj_gmrf<span class="sc">$</span>par</span>
-<span id="cb22-2"><a href="#cb22-2"></a>npar <span class="ot">&lt;-</span> <span class="fu">length</span>(init)</span>
-<span id="cb22-3"><a href="#cb22-3"></a>microbenchmark<span class="sc">::</span><span class="fu">microbenchmark</span>(</span>
-<span id="cb22-4"><a href="#cb22-4"></a>  <span class="st">&quot;looped&quot;</span> <span class="ot">=</span> obj_ar<span class="sc">$</span><span class="fu">fn</span>(init<span class="sc">+</span><span class="fu">rnorm</span>(npar, <span class="dv">0</span>, <span class="fl">0.1</span>)),</span>
-<span id="cb22-5"><a href="#cb22-5"></a>  <span class="st">&quot;autoreg&quot;</span> <span class="ot">=</span> obj_autoreg<span class="sc">$</span><span class="fu">fn</span>(init<span class="sc">+</span><span class="fu">rnorm</span>(npar, <span class="dv">0</span>, <span class="fl">0.1</span>)),</span>
-<span id="cb22-6"><a href="#cb22-6"></a>  <span class="st">&quot;gmrf&quot;</span> <span class="ot">=</span> obj_gmrf<span class="sc">$</span><span class="fu">fn</span>(init<span class="sc">+</span><span class="fu">rnorm</span>(npar, <span class="dv">0</span>, <span class="fl">0.1</span>)),</span>
-<span id="cb22-7"><a href="#cb22-7"></a>  <span class="at">times =</span> <span class="dv">10</span>  </span>
-<span id="cb22-8"><a href="#cb22-8"></a>    )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1"></a>init <span class="ot">&lt;-</span> obj_gmrf<span class="sc">$</span>par</span>
+<span id="cb26-2"><a href="#cb26-2"></a>npar <span class="ot">&lt;-</span> <span class="fu">length</span>(init)</span>
+<span id="cb26-3"><a href="#cb26-3"></a>microbenchmark<span class="sc">::</span><span class="fu">microbenchmark</span>(</span>
+<span id="cb26-4"><a href="#cb26-4"></a>  <span class="st">&quot;looped&quot;</span> <span class="ot">=</span> obj_ar<span class="sc">$</span><span class="fu">fn</span>(init<span class="sc">+</span><span class="fu">rnorm</span>(npar, <span class="dv">0</span>, <span class="fl">0.1</span>)),</span>
+<span id="cb26-5"><a href="#cb26-5"></a>  <span class="st">&quot;autoreg&quot;</span> <span class="ot">=</span> obj_autoreg<span class="sc">$</span><span class="fu">fn</span>(init<span class="sc">+</span><span class="fu">rnorm</span>(npar, <span class="dv">0</span>, <span class="fl">0.1</span>)),</span>
+<span id="cb26-6"><a href="#cb26-6"></a>  <span class="st">&quot;gmrf&quot;</span> <span class="ot">=</span> obj_gmrf<span class="sc">$</span><span class="fu">fn</span>(init<span class="sc">+</span><span class="fu">rnorm</span>(npar, <span class="dv">0</span>, <span class="fl">0.1</span>)),</span>
+<span id="cb26-7"><a href="#cb26-7"></a>  <span class="at">times =</span> <span class="dv">10</span>  </span>
+<span id="cb26-8"><a href="#cb26-8"></a>    )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="random-time-steps" class="slide level2">
@@ -1673,25 +1712,25 @@ a_0 \sim N(0, \frac{\epsilon^2}{1-\phi^2})
 </ul></li>
 </ul>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1"></a>parameters <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb23-2"><a href="#cb23-2"></a>  <span class="at">alpha0 =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">5</span>),</span>
-<span id="cb23-3"><a href="#cb23-3"></a>  <span class="at">re =</span> <span class="fu">rnorm</span>(nstocks),</span>
-<span id="cb23-4"><a href="#cb23-4"></a>  <span class="at">logbeta =</span> <span class="fu">runif</span>(nstocks, <span class="dv">0</span>, <span class="dv">1</span>),</span>
-<span id="cb23-5"><a href="#cb23-5"></a>  <span class="at">logsigma =</span> <span class="fu">runif</span>(nstocks, <span class="dv">3</span>, <span class="dv">5</span>),</span>
-<span id="cb23-6"><a href="#cb23-6"></a>  <span class="at">logsigma_re =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="fl">0.5</span>, <span class="dv">2</span>),</span>
-<span id="cb23-7"><a href="#cb23-7"></a>  <span class="at">re_time =</span> <span class="fu">rnorm</span>(nyears),</span>
-<span id="cb23-8"><a href="#cb23-8"></a>  <span class="at">logitphi =</span> <span class="dv">0</span>,</span>
-<span id="cb23-9"><a href="#cb23-9"></a>  <span class="at">logsigma_time =</span> <span class="dv">0</span></span>
-<span id="cb23-10"><a href="#cb23-10"></a>)</span>
-<span id="cb23-11"><a href="#cb23-11"></a></span>
-<span id="cb23-12"><a href="#cb23-12"></a>obj <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll_ar, <span class="at">parameters =</span> parameters, </span>
-<span id="cb23-13"><a href="#cb23-13"></a>  <span class="at">map =</span> <span class="fu">list</span>(<span class="at">logitphi =</span> <span class="fu">factor</span>(<span class="cn">NA</span>)), <span class="at">random =</span> <span class="fu">c</span>(<span class="st">&quot;re&quot;</span>, <span class="st">&quot;re_time&quot;</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
-<span id="cb23-14"><a href="#cb23-14"></a>fit <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj<span class="sc">$</span>par, obj<span class="sc">$</span>fn, obj<span class="sc">$</span>gr)</span>
-<span id="cb23-15"><a href="#cb23-15"></a></span>
-<span id="cb23-16"><a href="#cb23-16"></a>re_time2 <span class="ot">&lt;-</span> obj<span class="sc">$</span><span class="fu">report</span>()<span class="sc">$</span>re_time</span>
-<span id="cb23-17"><a href="#cb23-17"></a><span class="fu">ggplot</span>() <span class="sc">+</span> <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">x =</span> minyear<span class="sc">+</span><span class="dv">0</span><span class="sc">:</span>(nyears<span class="dv">-1</span>), <span class="at">y =</span> re_time)) <span class="sc">+</span> </span>
-<span id="cb23-18"><a href="#cb23-18"></a>  <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">x =</span> minyear<span class="sc">+</span><span class="dv">0</span><span class="sc">:</span>(nyears<span class="dv">-1</span>), <span class="at">y =</span> re_time2), <span class="at">col =</span> <span class="st">&#39;red&#39;</span>) <span class="sc">+</span></span>
-<span id="cb23-19"><a href="#cb23-19"></a><span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="dv">0</span>, <span class="at">col =</span> <span class="st">&#39;red&#39;</span>, <span class="at">linetype =</span> <span class="st">&#39;dashed&#39;</span>) <span class="sc">+</span> <span class="fu">xlab</span>(<span class="st">&quot;Year&quot;</span>) <span class="sc">+</span> <span class="fu">ylab</span>(<span class="st">&quot;Productivity Time Effect&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1"></a>parameters <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb27-2"><a href="#cb27-2"></a>  <span class="at">alpha0 =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">5</span>),</span>
+<span id="cb27-3"><a href="#cb27-3"></a>  <span class="at">re =</span> <span class="fu">rnorm</span>(nstocks),</span>
+<span id="cb27-4"><a href="#cb27-4"></a>  <span class="at">logbeta =</span> <span class="fu">runif</span>(nstocks, <span class="dv">0</span>, <span class="dv">1</span>),</span>
+<span id="cb27-5"><a href="#cb27-5"></a>  <span class="at">logsigma =</span> <span class="fu">runif</span>(nstocks, <span class="dv">3</span>, <span class="dv">5</span>),</span>
+<span id="cb27-6"><a href="#cb27-6"></a>  <span class="at">logsigma_re =</span> <span class="fu">runif</span>(<span class="dv">1</span>, <span class="fl">0.5</span>, <span class="dv">2</span>),</span>
+<span id="cb27-7"><a href="#cb27-7"></a>  <span class="at">re_time =</span> <span class="fu">rnorm</span>(nyears),</span>
+<span id="cb27-8"><a href="#cb27-8"></a>  <span class="at">logitphi =</span> <span class="dv">0</span>,</span>
+<span id="cb27-9"><a href="#cb27-9"></a>  <span class="at">logsigma_time =</span> <span class="dv">0</span></span>
+<span id="cb27-10"><a href="#cb27-10"></a>)</span>
+<span id="cb27-11"><a href="#cb27-11"></a></span>
+<span id="cb27-12"><a href="#cb27-12"></a>obj <span class="ot">&lt;-</span> <span class="fu">MakeADFun</span>(<span class="at">func =</span> negll_ar, <span class="at">parameters =</span> parameters, </span>
+<span id="cb27-13"><a href="#cb27-13"></a>  <span class="at">map =</span> <span class="fu">list</span>(<span class="at">logitphi =</span> <span class="fu">factor</span>(<span class="cn">NA</span>)), <span class="at">random =</span> <span class="fu">c</span>(<span class="st">&quot;re&quot;</span>, <span class="st">&quot;re_time&quot;</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb27-14"><a href="#cb27-14"></a>fit <span class="ot">&lt;-</span> <span class="fu">nlminb</span>(obj<span class="sc">$</span>par, obj<span class="sc">$</span>fn, obj<span class="sc">$</span>gr)</span>
+<span id="cb27-15"><a href="#cb27-15"></a></span>
+<span id="cb27-16"><a href="#cb27-16"></a>re_time2 <span class="ot">&lt;-</span> obj<span class="sc">$</span><span class="fu">report</span>()<span class="sc">$</span>re_time</span>
+<span id="cb27-17"><a href="#cb27-17"></a><span class="fu">ggplot</span>() <span class="sc">+</span> <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">x =</span> minyear<span class="sc">+</span><span class="dv">0</span><span class="sc">:</span>(nyears<span class="dv">-1</span>), <span class="at">y =</span> re_time)) <span class="sc">+</span> </span>
+<span id="cb27-18"><a href="#cb27-18"></a>  <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">x =</span> minyear<span class="sc">+</span><span class="dv">0</span><span class="sc">:</span>(nyears<span class="dv">-1</span>), <span class="at">y =</span> re_time2), <span class="at">col =</span> <span class="st">&#39;red&#39;</span>) <span class="sc">+</span></span>
+<span id="cb27-19"><a href="#cb27-19"></a><span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="dv">0</span>, <span class="at">col =</span> <span class="st">&#39;red&#39;</span>, <span class="at">linetype =</span> <span class="st">&#39;dashed&#39;</span>) <span class="sc">+</span> <span class="fu">xlab</span>(<span class="st">&quot;Year&quot;</span>) <span class="sc">+</span> <span class="fu">ylab</span>(<span class="st">&quot;Productivity Time Effect&quot;</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </section>
 <section id="practical" class="slide level2">

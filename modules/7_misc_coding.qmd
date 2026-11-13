@@ -97,6 +97,40 @@ obj_nadina <- make_adfun(param, nadina)
 fit_nadina <- nlminb(obj_nadina$par, obj_nadina$fn, obj_nadina$gr)
 ```
 
+## ADcontext
+
+- Can write code that will only execute when the function is called in an R context
+- Use `ad_context()` to check if the function is being taped `TRUE`or not.
+- Can use it to simulate within your model code, which when calling `$report()` will execute in R
+- Super useful for transformations when there could create bias in the mean
+
+```{r}
+#| echo: true
+#| eval: false
+
+data(cars)
+
+pred_func <- function(pars) {
+  getAll(pars, cars, warn = FALSE)
+  mu <- beta[1] + beta[2] * speed
+  sigma <- exp(logsigma)
+  
+  dist %~% dnorm(mu, sd = sigma)
+
+  ## Prediction Interval via simulation
+  if (!RTMB:::ad_context()) {
+    sim_matrix <- replicate(10000, rnorm(length(mu), mean = mu, sd = sigma))
+    pred_intervals <- apply(sim_matrix, 1, quantile, probs = c(0.025, 0.975)) 
+    REPORT(mu)
+    REPORT(pred_intervals)
+  }
+}
+
+obj <- MakeADFun(pred_func, list(beta = c(0,0), logsigma = log(sigma)), silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+intervals <- t(obj$report()$pred_intervals)
+```
+
 ## Fixing Overload Errors
 
 - You might find a bug of "Invalid argument to 'advector' (lost class attribute?)"
@@ -119,7 +153,7 @@ myfunc <- \(par){
 - No while loops if the number of iterations depends on parameters
 - No if statements that depend on parameter values
 - Dimension and number of operations must be set
-- If they change there are ***tricks*** that involve retaping each iteration or overloading
+- There are ***tricks*** to retape each iteration, or overload AD in some cases
 
 ```{r}
 fn <- function(x){
@@ -163,4 +197,166 @@ f <- function(x) {
     sum(dpois(0:x, 3))
   }
 }
+```
+
+## Probabilistic Syntax
+
+- Other ways to code likelihood
+- We can declare data using `%~%`
+- Don't have to explicitly write `log = TRUE`
+- Don't need to declare we are returning anything
+- More intuitive for many people
+
+```{r}
+#| echo: true
+
+x <- rnorm(100, 5, 2)
+
+pars <- list(logsigma = 0, mu = 0)
+
+negll <- \(pars){
+  getAll(pars)
+  sigma <- exp(logsigma)
+  x %~% dnorm(mu, sigma)
+}
+
+obj <- MakeADFun(negll, pars)
+# obj$fn()
+```
+
+## Newton Solver
+
+- RTMB has a built in Newton solver to do optimization within a tape
+- Used for Laplace approximation
+
+```{r}
+#| echo: true
+
+x <- rnorm(100, 0.25, 0.1)
+F <- MakeTape(\(theta){-sum(dnorm(x, theta[1], exp(theta[2]), log = TRUE))}, c(0,0))
+opt <- F$newton(1:2)
+opt(numeric(0))
+
+## Finds the MLE of mean given standard deviation
+optmu <- F$newton(1)
+optmu(3)
+
+## Finds the MLE of standard deviation given mean
+optmu <- F$newton(2)
+exp(optmu(0.1))
+```
+
+## Predictions
+
+- Let's use RTMB to get a prediction standard error
+- Compare with `lm` in R using cars data
+- Augment data and predict with `ADREPORT`
+
+```{r}
+#| echo: true
+#| layout-ncol: 2
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "100%"
+
+data(cars)
+
+pred_func <- \(pars){
+  getAll(pars, data, warn = FALSE)
+  sigma <- exp(logsigma)
+  mu  <- beta[1] + beta[2]*speed
+  dist <- OBS(dist)
+  mis <- is.na(dist)
+  dist[!mis] %~% dnorm(mu[!mis], sd=sigma)
+  ADREPORT(mu[mis])
+}
+
+## Add augmented data
+newdata <- data.frame(speed = 1:30, dist = NA)
+data <- rbind(cars, newdata)
+obj <- MakeADFun(pred_func, list(beta = c(0,0), logsigma = 0), silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+sdr <- sdreport(obj)
+pred <- cbind(newdata, summary(sdr, select = "report"))
+names(pred) <- c("speed", "dist", "est", "se")
+
+ggplot(data = pred, aes(x = speed, y = est)) + 
+  geom_line() + theme_minimal() + 
+  geom_ribbon(aes(x = speed, ymin = est - 1.96*se, ymax = est + 1.96*se), fill = 'grey', alpha = 0.5) +
+  geom_point(data = cars, aes(x = speed, y = dist)) + 
+  ylab("distance") +
+  ggtitle("Confidence Interval")
+
+## Prediction interval
+sd_est <- exp(fit$par[3])
+ggplot(data = pred, aes(x = speed, y = est)) + 
+  geom_line() + theme_minimal() + 
+  geom_ribbon(aes(x = speed, ymin = est - 1.96*sqrt(se^2 + sd_est^2), ymax = est + 1.96*sqrt(se^2 + sd_est^2)), fill = 'grey', alpha = 0.5) +
+  geom_point(data = cars, aes(x = speed, y = dist)) + 
+  ylab("distance") +
+  ggtitle("Prediction Interval")
+
+
+
+```
+
+## TMB STAN
+
+- We can pass the object from `RTMB` to `STAN` using `tmbstan`
+- Just need to make sure your distributions are correct for the prior that you want
+- Either explicitly tell `tmbstan` the bounds of your variables, or use Jacobians to transform the prior distributions and pass things on the transformed scale.
+
+```{r}
+#| echo: true
+#| eval: false
+
+library(tmbstan)
+
+data(cars)
+
+## Option 1: transformed parameters + Jacobians
+negll <- \(pars){
+  getAll(pars, cars, warn = FALSE)
+  sigma <- exp(logsigma)
+  REPORT(sigma)
+  mu  <- beta[1] + beta[2]*speed  
+  nll <- -sum(dnorm(beta, 0, 5, log = TRUE)) ## prior
+  nll <- nll - dgamma(sigma, 1, 1, log = TRUE) - logsigma ## prior
+  nll <- nll - sum(dnorm(dist, mu, sd=sigma, log = TRUE))
+  nll
+}
+
+obj <- MakeADFun(negll, list(beta = c(0,0), logsigma = 0))
+fit <- tmbstan(obj)
+post_sigma <- exp(as.matrix(fit)[,"logsigma"])
+
+## Option 1: transformed parameters + Jacobians
+negll2 <- \(pars){
+  getAll(pars, cars, warn = FALSE)
+  mu  <- beta[1] + beta[2]*speed  
+  nll <- -sum(dnorm(beta, 0, 5, log = TRUE)) ## prior
+  nll <- nll - dgamma(sigma, 1, 1, log = TRUE) ## prior
+  nll <- nll - sum(dnorm(dist, mu, sd=sigma, log = TRUE))
+  nll
+}
+
+obj2 <- MakeADFun(negll2, list(beta = c(0,0), sigma = 2))
+fit2 <- tmbstan(obj2, lower = c(-Inf, -Inf, 0), upper = c(Inf, Inf, Inf))
+post_sigma2 <- as.matrix(fit2)[,"sigma"]
+
+plot(density(post_sigma), main = "posterior sigma")
+lines(density(post_sigma2), col = 'red')
+```
+
+## TMB STAN Processing
+
+- To process predicted values we can use `REPORT`
+
+```{r}
+#| echo: true
+#| eval: false
+
+post <- as.matrix(fit)
+post <- cbind(post, sigma = 0)
+for( i in 1:nrow(post) ) post[i, "sigma"] <- obj$report(post[i,1:3])$sigma
 ```
