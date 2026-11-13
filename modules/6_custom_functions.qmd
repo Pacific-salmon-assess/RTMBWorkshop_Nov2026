@@ -19,63 +19,392 @@ execute:
 
 ## Write a Custom Distribution
 
-- `RTMB` doesn't have the distribution you want
+- If `RTMB` doesn't have the distribution you want
+- Check `RTMBdist` for additional distributions
 - Still want their simulation functionality
-- Example Poisson-Gamma Mixture with repeated counts within the mixture
+- Can write a special function that RTMB will recognize for simulation
+
+## Example Logit Normal Distribution
+
+- Consider a probability $p$, such that
+
+$$
+  \text{logit}(p) \sim N(\mu, \sigma)
+$$
+- What is the distribution of $p$?
+
+- We need to take into account the distortion caused by the transform
+
+::: {#my-long-container style="height: 300px; border: 1px solid #ccc;"}
+
+```{r}
+#| echo: false
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "75%"
+
+# Data
+x <- seq(-3, 3, length.out = 500)
+p <- plogis(x)
+
+# Two points to illustrate changes
+x1 <- -0.5
+x2 <-  0.5
+
+p1 <- plogis(x1)
+p2 <- plogis(x2)
+
+# Plot
+par(mar = c(4.5, 4.5, 2.5, 1))
+
+plot(
+  x, p,
+  type = "l",
+  lwd = 3,
+  col = "#2878B5",
+  xlab = expression(x),
+  ylab = expression(p == logit^{-1}* (x)),
+  main = "Logit transformation",
+  ylim = c(0, 1),
+  xaxs = "i",
+  yaxs = "i",
+  cex.lab = 1.3,
+  cex.main = 1.3
+)
+
+# Reference axes
+abline(h = 0, col = "grey85")
+abline(v = 0, col = "grey85", lty = 3)
+
+# First point: x = -1
+points(x1, p1, pch = 19, col = "#E15759", cex = 1.2)
+segments(-3, p1, x1, p1,
+         col = "#E15759", lty = 2, lwd = 1.5)
+segments(x1, 0, x1, p1,
+         col = "#E15759", lty = 2, lwd = 1.5)
+
+# Second point: x = 1
+points(x2, p2, pch = 19, col = "#59A14F", cex = 1.2)
+segments(-3, p2, x2, p2,
+         col = "#59A14F", lty = 2, lwd = 1.5)
+segments(x2, 0, x2, p2,
+         col = "#59A14F", lty = 2, lwd = 1.5)
+
+# Labels
+text(x1, p1 + 0.07, expression(x[1]),
+     col = "#E15759", cex = 1.1)
+text(x2, p2 + 0.07, expression(x[2]),
+     col = "#59A14F", cex = 1.1)
+```
+
+:::
+
+## Logit Normal Distribution
+
+- That change is defined based on the Jacobian.
+
+- For a `logit`, the inverse is
+
+$$
+  \text{logit}^{-1}(x) = p = \frac{\exp(x)}{1+\exp(x)}
+$$
+
+- The determinant of the Jacobian (in 1D absolute value of derivative)
+
+$$
+  |\frac{g(p)}{dp}| = p(1-p)
+$$
+
+- The other direction, it is just the inverse, $\frac{1}{p(1-p)}
+
+- The distribution of $p$, is then
+
+$$
+  f(p) = \frac{1}{p(1-p)}N(\text{logit}(p), \mu,\sigma)
+$$
+
+- Through simulation we can confirm
+
+::: {#my-long-container style="height: 300px; border: 1px solid #ccc;"}
+
+```{r}
+#| echo: false
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "75%"
+
+xsim <- rnorm(100000)
+psim <- plogis(xsim)
+x <- seq(-3, 3, 0.1)
+p <- plogis(x)
+fp <- dnorm(x, 0, 1)*1/(p*(1-p))
+
+# Plot settings
+plot(density(psim), xlab = "p", ylab = "f(p)", lwd = 2, main= "")
+lines(p, fp, col = 'red', lty = 2, lwd = 2)
+```
+
+:::
+
+## Log Normal Distribution
+
+- Compare logging the data first as opposed to declaring it log-normal.
+- Let's just look at Chilko sockeye stock recruit.
+- For $\log(x) = y$, absolute value of derivative is $1/x$, and $y$ is normally distributed.
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox %>% left_join(stock, by = "PopID")
+sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
+sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup() %>% mutate(logRS = log(recruits/spawners))
+```
+
+```{r}
+#| echo: true
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "75%"
+
+library(RTMB)
+
+soxch <- sox %>% filter(PopName == "Chilko")
+
+dlognorm <- function(x, mean, sd, log = FALSE){
+  y <- log(x)
+  logpdens <- dnorm(y, mean, sd, log = TRUE) - y # -y == log(1/x)
+  
+  if (inherits(x, "simref")) {
+    return(RTMB:::dGenericSim(
+      "dlognorm",
+      x = x,
+      mean = mean,
+      sd = sd,
+      log = log
+    ))
+  }
+  
+  if(log) return(logpdens)
+  return(exp(logpdens))
+}
+
+rlognorm <- function(n, mean, sd){
+  exp(rnorm(n, mean, sd))
+}
+```
+
+## Log Normal Distribution Cont...
+
+- Does it matter if I include the Jacobian for my observed distribution?
 
 ```{r}
 #| echo: true
 
-## Random generator with a single rate
-rpoisgamma <- function(n, size, prob){
-  lambda <- rgamma(1, size, prob/(1-prob))
-  return(rpois(n, lambda))
-}
-size = 5
-prob = 0.25
-x <- rpoisgamma(10, size, prob)
+param <- list(logsigma = 0, alpha = 0, logbeta = 0)
+soxch$RS <- soxch$recruits/soxch$spawners
 
-## Distribution
-dpoisgamma <- function(x, size, prob, log = FALSE){
-  df <- function(theta){
-    -sum(dpois(x, exp(theta), log = TRUE)) - 
-        dgamma(exp(theta), size, prob/(1-prob), log = TRUE) - theta
+negll <- function(pars){
+  getAll(pars, soxch)
+  mu <- alpha - exp(logbeta)*spawners
+  sigma <- exp(logsigma)
+  RS <- OBS(RS)
+  
+  if(lognormal == TRUE){
+    nll <- -sum(dlognorm(RS, mu, sigma, log = TRUE))
+  }else{
+    nll <- -sum(dnorm(log(RS), mu, sigma, log = TRUE))
   }
-  tape <- MakeTape(df, 0)
-  dapprox <- tape$laplace(1)
-  negprob <- dapprox(numeric(0))
-  if(log) return(-negprob)
-  return(exp(-negprob))
+  return(nll)
 }
+
+lognormal <- TRUE
+obj <- MakeADFun(negll, param, silent = TRUE)
+# obj$fn()
+
+lognormal <- FALSE
+obj2 <- MakeADFun(negll, param, silent = TRUE)
+# obj2$fn()
+```
+
+## Checking Simulation
+
+::: {#my-long-container style="height: 300px; border: 1px solid #ccc;"}
+
+```{r}
+#| echo: true
+#| fig-width: 5
+#| fig-height: 4
+#| out-width: "75%"
+
+sim1 <- sapply(1:1000, FUN = function(x){obj$simulate()$RS})
+mu1 <- apply(sim1, 1, mean)
+
+sim2 <- sapply(1:1000, FUN = function(x){obj2$simulate()$RS})
+mu2 <- apply(sim2, 1, mean)
+
+plot(mu1, mu2)
+abline(0, 1, col = 'red', lty = 2)
+```
+:::
+
+## When it Matters
+
+- When a Bayesian it is really important (prior distributions)
+- Non-normal random effects in a Frequentist perspective
+- Consider a Poisson count that depends on a random effect
+- If gamma distributed, then that becomes a negative-binomial
+
+\begin{align}
+  \exp(x) & \sim \text{gamma}(a,b) \\
+  x & \sim \text{gamma}(\exp(x), a, b)\exp(x)
+\end{align}
+
+```{r}
+#| echo: true
+
+dlgamma <- function(x, shape, rate, log = FALSE){
+  y <- exp(x)
+  logpdens <- dgamma(y, shape = shape, rate = rate, log = TRUE) + x 
+  
+  if(log) return(logpdens)
+  return(exp(logpdens))
+}
+
+lambda <- rgamma(100, 5, 1)
+count <- rpois(100, lambda)
+
+param <- list(logshape = 0, lograte = 0, logre = numeric(100))
 
 negll <- function(pars){
   getAll(pars)
-  r <- exp(logr)
-  p <- plogis(logitp)
-  
-  ll <- 0
-  for(i in 1:nrow(x)){
-    ll <- ll + sum(dpoisgamma(x[i,], size = r, prob = p, log = TRUE))
+  a <- exp(logshape)
+  b <- exp(lograte)
+
+  nll <- 0
+  if(nb == TRUE){
+    nll <- nll - sum(dnbinom(count, a, b/(1+b), log = TRUE))
+  }else{
+    mu <- exp(logre)
+    if(lgamma == TRUE){
+      nll <- nll - sum(dlgamma(logre, a, b, log = TRUE))
+    }else{
+      nll <- nll - sum(dgamma(mu, a, b, log = TRUE))
+    }
+    nll <- nll - sum(dpois(count, mu, log = TRUE))
   }
-  -ll
+  return(nll)
 }
-x <- NULL
-for( i in 1:10) x <- rbind(x, rpoisgamma(n = 10, size = 3, prob = 0.25))
 
-obj <- MakeADFun(negll, list(logr=0,logitp=0))
-fit <- nlminb(obj$par, obj$fn, obj$gr)
+lgamma <- TRUE
+nb <- FALSE
+obj <- MakeADFun(negll, param, random = "logre", silent = TRUE)
+# obj$fn()
 
-negll2 <- function(pars){
-  getAll(pars)
-  r <- exp(logr)
-  p <- plogis(logitp)
-  lambda <- exp(re)
-  ll <- sum(dgamma(re, r, p/(1-p), log = TRUE) + re)
-  for(i in 1:nrow(x)){
-    ll <- ll + sum(dpois(x[i,], lambda[i], log = TRUE))
-  }
-  -ll
-}
-obj2 <- MakeADFun(negll2, list(logr=0,logitp=0, re = numeric(nrow(x))), random = "re", silent = TRUE)
+lgamma <- FALSE
+obj2 <- MakeADFun(negll, param, random = "logre", silent = TRUE)
+# obj2$fn()
 
+nb <- TRUE
+obj3 <- MakeADFun(negll, list(logshape = 0, lograte = 0), silent = TRUE)
+# obj3$fn()
 ```
+
+## Understanding ADjoint
+
+- You can supply the gradient if it's known
+- Can be much more efficient than taping.
+- For example, Lambert W function is computed by approximation, but has an analytical gradient.
+
+\begin{align}
+  W(x)e^{W(x)} & = x
+\eng{align}
+
+- In this case,
+
+$$
+  \frac{dW(x)}{dx} = \frac{1}{e^{W(x)}(1+W(x))}
+$$
+
+- `ADjoint` Accepts the function eval, `f` and then the gradient `df` as second argument.
+- A gradient should have three inputsL
+  * `x` the input for `f`
+  * `y` the output for `f`
+  * `dy` the reverse mode derivative that RTMB carries, which is needed for the chain rule
+
+```{r}
+#| echo: true
+
+## Numerical Solution (don't worry about it)
+W <- function(x) {
+  logx <- log(x)
+  y <- pmax(logx, 0)
+  while (any(abs(logx - log(y) - y) > 1e-9, na.rm = TRUE)) {
+      y <- y - (y - exp(logx - y)) / (1 + y)
+  }
+  y
+}
+## Derivatives (y = W(x), dy is internal RTMB gradient.)
+dW <- function(x, y, dy) {
+   dy / (exp(y) * (1 + y))
+}
+## Define new derivative symbol
+LamW <- ADjoint(W, dW)
+
+## Can now use LamW in your own code!
+F <- MakeTape(function(x)sum(LamW(x)), numeric(3))
+```
+
+## Multivariate Logit Normal
+
+- Consider a vector $\mathbf{p}$, such that if we transform it with a multivariate logit,
+
+$$
+  \text{mlogit}(\mathbf{p}) \sim N(\boldsymbol{\mu}, \Sigma).
+$$
+
+- We might want to do something like this for proportions that are correlated, often for age class data.
+
+```{r}
+#| echo: true
+
+## Transformation:
+mlogit <- \(x){
+  n <- length(x)
+  log(x[-n]/x[n])  
+}
+imlogit <- \(x){
+  ex <- exp(c(x,0))
+  ex/sum(ex)
+}
+
+## ADjoint for determinant
+logdet <- ADjoint(
+  function(J) {
+    determinant(J, logarithm = TRUE)$modulus
+  },
+  function(J, y, dy) {
+    t(solve(J)) * dy
+  },
+  name = "logdet"
+)
+
+# Log absolute determinant of Jacobian using MakeTape
+mlogit_logdet <- function(x) {
+
+  n <- length(x)
+  tape <- MakeTape(\(x) mlogit(x), x)
+  J <- tape$jacobian(x)
+  logdet(J[1:(n-1), 1:(n-1)])
+}
+
+
+mu <- c(-1, 1)
+Sigma <- matrix(c(0.25, -0.1, -0.1, 0.5), nrow=2, ncol=2)
+x <- MASS::mvrnorm(1, mu, Sigma)
+p <- imlogit(x)
+```
+
+

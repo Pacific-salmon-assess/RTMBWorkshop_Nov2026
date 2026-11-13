@@ -64,6 +64,9 @@ obj <- MakeADFun(func = negll, parameters = parameters, silent = TRUE)
 
 par_init <- obj$par + rnorm(length(obj$par))
 mle <- nlminb(par_init, obj$fn, obj$gr)
+
+## relist everything for convenience to access parameters by name
+parList <- obj$env$parList(mle$par)
 ```
 
 ## Now What?

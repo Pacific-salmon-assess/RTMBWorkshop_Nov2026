@@ -1,0 +1,244 @@
+---
+title: "Generalized Additive Model"
+format: 
+  html:
+    self-contained: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
+---
+
+In this example I'll very briefly introduce the concept of a spline function to be used as a smoother in a linear regression. See <https://m-clark.github.io/generalized-additive-models/> for a  nice tutorial on fitting a GAM.
+
+Instead of a random effect over time, we might want to fit a smooth spline through time. Splines are just linear combinations of basis functions and can be fit with very few changes to what we have done so far. Our current model is,
+
+$$
+\begin{align}
+  \log(R_i/S_i) & =  \alpha_{s_i} + \beta_{s_i} S_i + \epsilon_i \\
+  \alpha_{s} & \sim N(\alpha_0, \eta^2) \\
+  \epsilon_i & \sim N(0, \sigma_{s_i}^2) \\
+  s & \in \{1,\ldots,n_{s}\}.
+\end{align}
+$$
+
+If we add in a spline over time, $s(t)$, then 
+
+$$
+\begin{align}
+  \log(R_i/S_i) & =  \alpha_{s_i} + \beta_{s_i} S_i + s(t_i) + \epsilon_i \\
+  \alpha_{s} & \sim N(\alpha_0, \eta^2) \\
+  \epsilon_i & \sim N(0, \sigma_{s_i}^2) \\
+  s & \in \{1,\ldots,n_{s}\}.
+\end{align}
+$$
+We then just need to define what the function $s$ is. We will ignore too much about basis functions, but just know that they have the general form of 
+
+$$
+  s(t) = \sum_{k=1}^K b_k B_k(t),
+$$
+where $B_k$ is the $k$th basis function, and $b_k$ is the coefficient associated with the basis function. A B-spline is a piecewise polynomial function joined at ***knots***. 
+
+```{r}
+library(splines2)
+K <- 8
+knots <- seq(5, 70, length = K-1)
+
+bsMat <- bSpline(1:75, 
+                 knots = knots, 
+                 degree = 3,    ## Cubic
+                 periodic = FALSE, ## Change later.
+                 intercept = FALSE)
+
+## What do the basis functions look like?
+plot(bsMat)
+```
+
+Lets use this to create a smooth curve.
+
+```{r}
+#| echo: false
+library(ggplot2)
+library(dplyr)
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox %>% left_join(stock, by = "PopID")
+sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
+sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup()
+```
+
+
+```{r}
+#| echo: true
+#| eval: true
+
+library(RTMB)
+
+sox$stock <- as.numeric(factor(sox$PopName))
+nstocks <- max(sox$stock)
+sox <- sox %>% mutate(time = yr - min(yr) + 1)
+nyears <- max(sox$time)
+minyear <- min(sox$yr)
+sox$logRS <- log(sox$recruits/sox$spawners)
+nobs <- nrow(sox)
+K <- ncol(bsMat)  ## includes boundary knots.
+B <- bsMat
+class(B) <- "matrix"
+
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2),
+  b = rnorm(K)
+)
+
+negll <- function(pars){
+  
+  getAll(pars, sox, warn = FALSE)
+  beta <- exp(logbeta)
+  
+  logRS <- OBS(logRS)
+
+  sigma <- exp(logsigma)
+  sigma_re <- exp(logsigma_re)
+  sigma_obs <- sigma[stock]
+
+  alpha_stock <- re + alpha0
+  ADREPORT(alpha_stock)
+  
+  time_effect <- (B %*% b)
+  
+  mu <- numeric(nobs)
+  for( i in 1:nobs )  {
+    mu[i] <- alpha_stock[stock[i]] - beta[stock[i]]*spawners_scaled[i] + time_effect[time[i],1]
+  }
+  ll <- sum(dnorm(re, 0, sigma_re, log = TRUE))
+  ll <- ll + sum(dnorm(logRS, mu, sigma_obs, log = TRUE))
+  
+  REPORT(mu)
+  REPORT(sigma_obs)
+  REPORT(time_effect)
+  
+  return(-ll)
+}
+
+obj <- MakeADFun(func = negll, parameters = parameters, 
+  random = "re",  silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+sox$expected <- obj$report()$mu
+sox$sigma <- obj$report()$sigma_obs
+smooth_time <- obj$report()$time_effect
+
+plot(1:75, smooth_time, type = "l")
+
+sox <- sox %>% 
+  mutate(resid = logRS - expected) %>%
+  mutate(resid_std = resid/sigma)
+
+ggplot(data = sox, aes(x = expected, y = resid_std)) + 
+  geom_point() + theme_minimal() + 
+  geom_hline(yintercept = 0, col = 'red', linetype = 2) +
+  ylab("Observed - Expected")
+```
+
+This is certainly not working that great. How do we choose the number of knots etc? Instead, let's use thin plate splines and the `mgcv` package to define the basis function.
+
+```{r}
+library(mgcv)
+sm <- smoothCon(
+  s(time, bs = "tp", k = 10),
+  data = data.frame(time = 1:75),
+  absorb.cons = TRUE
+)[[1]]
+
+B <- sm$X
+S <- sm$S[[1]]
+
+matplot(
+  1:75,
+  B,
+  type = "l",
+  lty = 1,
+  xlab = "time",
+  ylab = "Basis function value",
+  main = "Thin-plate regression spline basis functions"
+)
+sox$PopNamef <- factor(sox$PopName)
+fit_gam <- gam(logRS ~ spawners_scaled:PopNamef + s(PopNamef, bs = "re") +
+    s(time, bs = "tp", k = 10), data = sox, method = 'REML')
+```
+
+For thin plate splines, we also apply a penalty term to keep the function smooth and avoid overfitting. The penalty term, for penalty matrix $S$, with smoothing parameter $\lambda$, is added to the negative log likelihood as
+
+$$
+  -l(\boldsymbol{\theta}) + \frac{\lambda}{2}\mathbf{b} S \mathbf{b}^T.
+$$
+
+
+```{r}
+#| echo: true
+#| eval: true
+K <- ncol(B)  ## includes boundary knots.
+
+parameters <- list(
+  alpha0 = runif(1, 2, 5),
+  re = rnorm(nstocks),
+  logbeta = runif(nstocks, 0, 1),
+  logsigma = runif(nstocks, 3, 5),
+  logsigma_re = runif(1, 0.5, 2),
+  b = rnorm(K),
+  loglambda = 0
+)
+
+negll <- function(pars){
+  
+  getAll(pars, sox, warn = FALSE)
+  beta <- exp(logbeta)
+  lambda <- exp(loglambda)
+  
+  logRS <- OBS(logRS)
+
+  sigma <- exp(logsigma)
+  sigma_re <- exp(logsigma_re)
+  sigma_obs <- sigma[stock]
+
+  alpha_stock <- re + alpha0
+  ADREPORT(alpha_stock)
+  
+  time_effect <- (B %*% b)
+  
+  mu <- numeric(nobs)
+  for( i in 1:nobs )  {
+    mu[i] <- alpha_stock[stock[i]] - beta[stock[i]]*spawners_scaled[i] + time_effect[time[i],1]
+  }
+  ll <- sum(dnorm(re, 0, sigma_re, log = TRUE))
+  ll <- ll + sum(dnorm(logRS, mu, sigma_obs, log = TRUE))
+  
+  REPORT(mu)
+  REPORT(sigma_obs)
+  REPORT(time_effect)
+
+  pen <- lambda/2*t(b)%*%S%*%b
+    
+  return(-ll + pen)
+}
+
+obj <- MakeADFun(func = negll, parameters = parameters, 
+  random = "re",  silent = TRUE)
+fit <- nlminb(obj$par, obj$fn, obj$gr)
+sox$expected <- obj$report()$mu
+sox$sigma <- obj$report()$sigma_obs
+smooth_time <- obj$report()$time_effect
+
+plot(1:75, smooth_time, type = "l")
+
+sox <- sox %>% 
+  mutate(resid = logRS - expected) %>%
+  mutate(resid_std = resid/sigma)
+
+ggplot(data = sox, aes(x = expected, y = resid_std)) + 
+  geom_point() + theme_minimal() + 
+  geom_hline(yintercept = 0, col = 'red', linetype = 2) +
+  ylab("Observed - Expected")
+```

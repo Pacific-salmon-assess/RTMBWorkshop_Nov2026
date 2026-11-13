@@ -1,0 +1,173 @@
+---
+title: "Custom Distributions in RTMB"
+author: "Paul van Dam-Bates"
+format: 
+  html:
+    self-contained: true
+---
+
+## Key Components
+
+Distribution functions need to have:
+
+- Distribution, `ddist`
+- Random generator function `rdist`
+- Flag for simulation (optional)
+- Flag for residuals (optional), requires specialized function.
+
+R package `RTMBdist` has a bunch of additional distributions programmed.
+
+Useful things to know about programming custom functions in `RTMB`
+
+- Check if being used by an `RTMB` function or in base R: `ad_context()`
+```{r}
+library(RTMB)
+
+fun <- \(x){
+  if(!RTMB:::ad_context()) print("This is called in R!")
+  x*3
+}
+F <- MakeTape(fun, 0)
+fun(0)
+F(0)
+```
+
+- `inherits(x, "simref")` Indicator if `RTMB` is asking an `x` value defined as `OBS(x)` for simulation.
+- `inherits(x, "osa")`Indicator if `RTMB` is asking to simulate OSA residuals for `OBS(x)`.
+
+## Example Dirichlet-Multinomial
+
+For an observed vector, $\mathbf{x}$, of counts that sum to $M$, and has proportions $\boldsymbol{\pi}$ that are randomly distributed according to a Dirichlet distribution.
+
+$$
+\begin{align}
+  \mathbf{x} & \sim \text{Multinomial}(M, \boldsymbol{\pi}) \\
+  \boldsymbol{\pi} & \sim \text{Dirichlet}(\boldsymbol{\alpha})
+\end{align}
+$$
+In this case, we have a known marginal distribution that we refer to as the Multinomial-Dirichlet distribution, where 
+
+$$
+\begin{align}\
+  f(\mathbf{x}) & = \int \text{Mult}(\mathbf{x}|M, \boldsymbol{\pi})\text{Dir}(\boldsymbol{\pi} | \boldsymbol{\alpha}) d\boldsymbol{\pi}\\
+  & = \frac{\Gamma(\textstyle \sum \alpha_i)\Gamma(M+1)}{\Gamma(n + \textstyle \sum \alpha_i)} \prod \frac{\Gamma(x_i+\alpha_i)}{\Gamma(\alpha_i)\Gamma(x_i+1)}
+\end{align}
+$$
+
+Make a random number generator by drawing from Dirichlet and then multinomial.
+
+```{r}
+#| echo: true
+#| eval: true
+
+## Simulate Function:
+## Default simulation of Dirichlet is row for each simulation.
+
+rdirmulti <- function(n, size, alpha) {
+
+  # Draw n sets of theta from Dirichlet(alpha)
+  # theta <- rdirichlet(n, alpha)
+
+  # Draw multinomial counts
+  nalpha <- length(alpha)
+  counts <- matrix(0, nrow = n, ncol = nalpha)
+  for( i in 1:n ){
+    theta <- rgamma(length(alpha), 1, alpha)
+    theta <- theta/sum(theta)
+    counts[i,] <- rmultinom(1, size = size, prob = theta)
+  }  
+  if(n==1) return(drop(counts)) # return as vector
+  counts
+}
+```
+
+Now write the distribution function.
+
+```{r}
+#| echo: true
+#| eval: true
+#| 
+## x: Assume vector for now.
+
+ddirmulti <- function(x, size, alpha, log = FALSE) {
+
+  ## Simulate Random Variables for RTMB
+  ## Fill x but don't return anything.
+  if(inherits(x, "simref")) {
+    x[] <- rdirmulti(1, size=size, alpha=alpha)
+    return(0)
+  }
+  if(inherits(x, "osa")) {
+    return(ddirmulti_osa(x, alpha, log))
+  }
+  alpha0 <- sum(alpha)
+
+  logdens <- lgamma(alpha0) + lgamma(size + 1) - lgamma(size + alpha0)
+  logdens <- logdens + sum(lgamma(x + alpha) - lgamma(alpha) - lgamma(x + 1))
+  # logdens <- as.numeric(logdens)
+
+  if(log) return(logdens)
+  return(exp(logdens))
+}
+
+## Make sure we got it right!
+x <- rdirmulti(1, 5, c(1,1,1))
+ddirmulti(x, 5, c(1,1,1))
+RTMBdist::ddirmult(x, 5, c(1,1,1))
+```
+
+Make sure we can simulate correctly and it compiles in `RTMB`.
+
+```{r}
+
+x <- rdirmulti(10, 5, c(1,1,1))
+
+negloglik <- function(pars){
+  getAll(pars)
+  alpha <- exp(logalpha)
+  x <- OBS(x)
+
+  ll <- 0
+  for( i in 1:nrow(x) ){
+    ll <- ll + ddirmulti(x[i,], size = 5, alpha = alpha)
+  }
+  -ll
+}
+obj <- MakeADFun(negloglik, list(logalpha = c(1,1,1)), silent = TRUE)
+obj$fn()
+obj$gr()
+obj$simulate(c(0,1,2))
+
+# osa_res <- oneStepPredict(
+#   obj = obj,
+#   observation.name = "x",
+#   method = "oneStepGeneric",    # Best suited for discrete multivariate data
+#   discrete = TRUE
+# )
+
+```
+
+Adding option for OSA residuals
+
+```{r}
+ddirmulti_osa <- function(x, alpha, log = FALSE) {
+  # Extract the subset that has been observed/kept or is currently the target
+  idx <- order(attr(x@keep, "ord"))
+
+  # Subset x and alpha according to the current conditional state
+  x_sub <- x[idx]
+  alpha_sub <- alpha[idx]
+  
+  for( a in 1:length(alpha-1) )
+  
+  # Calculate conditional density metrics
+  alpha0_sub <- sum(alpha_sub)
+  size_sub <- sum(x_sub@x) # Total counts in the active subset
+  
+  logdens <- lgamma(alpha0_sub) + lgamma(size_sub + 1) - lgamma(size_sub + alpha0_sub)
+  logdens <- logdens + sum(lgamma(x_sub@x + alpha_sub) - lgamma(alpha_sub) - lgamma(x_sub@x + 1))
+  
+  if(log) return(logdens)
+  return(exp(logdens))
+}
+```

@@ -1,21 +1,21 @@
-Species,PopType,PopID,PopName,PopNameAbbr,PopSeq,GrpNm,GrpID,PopAgeClasses,AvgGen
-Sockeye,Stock,1,Early Stuart,EStu,1,EStu,1,"c(4,5)",4
-Sockeye,Stock,2,Late Stuart,LStu,10,Sum,3,"c(4,5)",4
-Sockeye,Stock,3,Stellako,Stell,12,Sum,3,"c(4,5)",4
-Sockeye,Stock,4,Bowron,Bowr,2,ESum,2,"c(4,5)",4
-Sockeye,Stock,5,Raft,Raft,14,Sum,3,"c(4,5)",4
-Sockeye,Stock,6,Quesnel,Ques,11,Sum,3,"c(4,5)",4
-Sockeye,Stock,7,Chilko,Chil,9,Sum,3,"c(4,5)",4
-Sockeye,Stock,8,Seymour,Sey,8,ESum,2,"c(4,5)",4
-Sockeye,Stock,9,Late Shuswap,LShu,16,Lat,4,"c(4,5)",4
-Sockeye,Stock,10,Birkenhead,Birk,19,Lat,4,"c(4,5)",4
-Sockeye,Stock,11,Cultus,Cult,15,Lat,4,"c(4,5)",4
-Sockeye,Stock,12,Portage,Port,17,Lat,4,"c(4,5)",4
-Sockeye,Stock,13,Weaver Creek,Weav,18,Lat,4,"c(4,5)",4
-Sockeye,Stock,14,Fennel Creek,Fenn,3,ESum,2,"c(4,5)",4
-Sockeye,Stock,15,Scotch Creek,Scot,7,ESum,2,"c(4,5)",4
-Sockeye,Stock,16,Gates,Gate,4,ESum,2,"c(4,5)",4
-Sockeye,Stock,17,Nadina,Nadi,5,ESum,2,"c(4,5)",4
-Sockeye,Stock,18,Upper Pitt River,UPit,6,ESum,2,"c(4,5)",4
-Sockeye,Stock,19,Harrison,Harr,13,Sum,3,"c(3,4)",4
-Pink,Stock,20,Fraser Pink,FRPk,20,Pinks,5,c(2),2
+Species,PopType,PopID,PopName,PopNameAbbr,PopSeq,GrpNm,GrpID,PopAgeClasses,AvgGen,MU
+Sockeye,Stock,1,Early Stuart,EStu,1,EStu,1,"c(4,5)",4,EarlyStuart
+Sockeye,Stock,2,Late Stuart,LStu,10,Sum,3,"c(4,5)",4,Summer
+Sockeye,Stock,3,Stellako,Stell,12,Sum,3,"c(4,5)",4,Summer
+Sockeye,Stock,4,Bowron,Bowr,2,ESum,2,"c(4,5)",4,EarlySummer
+Sockeye,Stock,5,Raft,Raft,14,Sum,3,"c(4,5)",4,Summer
+Sockeye,Stock,6,Quesnel,Ques,11,Sum,3,"c(4,5)",4,Summer
+Sockeye,Stock,7,Chilko,Chil,9,Sum,3,"c(4,5)",4,Summer
+Sockeye,Stock,8,Seymour,Sey,8,ESum,2,"c(4,5)",4,EarlySummer
+Sockeye,Stock,9,Late Shuswap,LShu,16,Lat,4,"c(4,5)",4,Late
+Sockeye,Stock,10,Birkenhead,Birk,19,Lat,4,"c(4,5)",4,Late
+Sockeye,Stock,11,Cultus,Cult,15,Lat,4,"c(4,5)",4,Late
+Sockeye,Stock,12,Portage,Port,17,Lat,4,"c(4,5)",4,Late
+Sockeye,Stock,13,Weaver Creek,Weav,18,Lat,4,"c(4,5)",4,Late
+Sockeye,Stock,14,Fennel Creek,Fenn,3,ESum,2,"c(4,5)",4,EarlySummer
+Sockeye,Stock,15,Scotch Creek,Scot,7,ESum,2,"c(4,5)",4,EarlySummer
+Sockeye,Stock,16,Gates,Gate,4,ESum,2,"c(4,5)",4,EarlySummer
+Sockeye,Stock,17,Nadina,Nadi,5,ESum,2,"c(4,5)",4,EarlySummer
+Sockeye,Stock,18,Upper Pitt River,UPit,6,ESum,2,"c(4,5)",4,EarlySummer
+Sockeye,Stock,19,Harrison,Harr,13,Sum,3,"c(3,4)",4,Summer
+Pink,Stock,20,Fraser Pink,FRPk,20,Pinks,5,c(2),2,Pinks

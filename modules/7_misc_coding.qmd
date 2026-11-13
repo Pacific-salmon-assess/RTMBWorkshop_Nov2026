@@ -1,0 +1,166 @@
+---
+title: "Miscellaneous RTMB Coding"
+format:
+  revealjs:
+    theme: simple
+    slide-number: true
+    show-slide-number: all
+    progress: true
+    width: 1280
+    height: 720
+    embed-resources: true
+    code-line-numbers: true
+    highlight-style: github
+    scrollable: true
+execute:
+  warning: false
+  message: false # Optional: also hides messages
+---
+
+## Passing Data to RTMB (Option 1)
+
+- Only the parameters argument as a list can be passed to `MakeADFun`
+- One option is to write a wrapper function
+- By using a wrapper function, we force the data into the objective function's parent environment
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+sox <- read.csv("../data/sockeye/SRDATA2026 1.csv")
+stock <- read.csv("../data/sockeye/FC_StockInfo 2.csv")
+sox <- sox %>% left_join(stock, by = "PopID")
+sox <- sox %>% filter(!is.na(spawners), !is.na(recruits))
+sox <- sox %>% group_by(PopName) %>% mutate(sd_spawners = sd(spawners),  spawners_scaled = spawners/sd_spawners) %>% ungroup() %>% mutate(logRS = log(recruits/spawners))
+```
+
+
+```{r}
+#| echo: true
+
+library(RTMB)
+
+param <- list(logsigma = 0, alpha = 0, logbeta = 0)
+
+objective_function <- \(pars, data){
+  getAll(pars, data)
+  mu <- alpha - exp(logbeta)*spawners
+  sigma <- exp(logsigma)
+
+  nll <- -sum(dnorm(logRS, mu, sigma, log = TRUE))
+  return(nll)
+}
+
+join_fun <- function(f, data) function(pars) f(pars, data)
+stellako <- sox %>% filter(PopName == "Stellako")
+obj_stellako <- MakeADFun(join_fun(objective_function, stellako), param, silent = TRUE)
+fit_stellako <- nlminb(obj_stellako$par, obj_stellako$fn, obj_stellako$gr)
+
+latestuart <- sox %>% filter(PopName == "Late Stuart")
+obj_latestuart <- MakeADFun(join_fun(objective_function, latestuart), param, silent = TRUE)
+fit_latestuart <- nlminb(obj_latestuart$par, obj_latestuart$fn, obj_latestuart$gr)
+```
+
+## Passing Data to RTMB (Option 2)
+
+- Pass the data to the function environment
+- Helpful for package development
+
+```{r}
+#| echo: true 
+
+objective_function <- \(pars){
+  getAll(pars, data)
+  mu <- alpha - exp(logbeta)*spawners
+  sigma <- exp(logsigma)
+
+  nll <- -sum(dnorm(logRS, mu, sigma, log = TRUE))
+  return(nll)
+}
+
+make_adfun <- function(pars, data){
+  data_env <- new.env()
+  
+  ## The entire function's environment
+  # environment(objective_function) <- environment()  
+  
+  ## Just data:
+  data_env <- local({data <- data; environment()})
+  environment(objective_function) <- data_env
+  
+  obj <- MakeADFun(objective_function, param, silent = TRUE)
+  obj
+}
+
+nadina <- sox %>% filter(PopName == "Nadina")
+obj_nadina <- make_adfun(param, nadina)
+fit_nadina <- nlminb(obj_nadina$par, obj_nadina$fn, obj_nadina$gr)
+```
+
+## Fixing Overload Errors
+
+- You might find a bug of "Invalid argument to 'advector' (lost class attribute?)"
+- A quick solution to this is to make sure any functions written in R have an AD overload operator added
+- Required for all functions within a package!
+
+```{r}
+#| echo: true
+
+myfunc <- \(par){
+"c" <- ADoverload("c")
+"diag<-" <- ADoverload("diag<-")
+# The rest of the function...
+}
+```
+
+## Things with no gradient
+
+- You can't use uniform distributions in RTMB as they have discontinuities at their end points.
+- No while loops if the number of iterations depends on parameters
+- No if statements that depend on parameter values
+- Dimension and number of operations must be set
+- If they change there are ***tricks*** that involve retaping each iteration or overloading
+
+```{r}
+fn <- function(x){
+  if(x < 0) -1/2
+  else 1/5
+}
+# fnt <- MakeTape(fn, 0.5)
+
+fn <- function(theta){
+  -dunif(theta, 0, 1,log = TRUE)
+}
+# fnt <- MakeTape(fn, 0.5)
+```
+
+## Forcing AD Overload
+
+```{r}
+#| echo: true
+
+f <- function(x) {
+  "if" <- ADoverload("if")
+  if (x > 0) {
+    3*x^2
+  } else {
+    x + x^2
+  }
+}
+
+F <- MakeTape(f, 1)
+F(2)
+F(-2)
+F$jacobian(2)
+F$jacobian(-100)
+
+## This isn't going to work
+f <- function(x) {
+  "if" <- ADoverload("if")
+  if(x > 5){ 
+    sum(dpois((x-5):(x+5), 5))
+  }else{
+    sum(dpois(0:x, 3))
+  }
+}
+```
