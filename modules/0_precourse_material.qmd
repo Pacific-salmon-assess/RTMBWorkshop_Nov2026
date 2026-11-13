@@ -90,7 +90,7 @@ An example of using `model.matrix` to create a design matrix and compute the exp
   
   ## Version 2: Looping
   mu <- numeric(nrow(X))
-  for(i in 1:nrow(X)) mu <- sum(X[i,] * beta)
+  for(i in 1:nrow(X)) mu[i] <- sum(X[i,] * beta)
 ```
 
 
