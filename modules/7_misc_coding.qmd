@@ -126,7 +126,7 @@ pred_func <- function(pars) {
   }
 }
 
-obj <- MakeADFun(pred_func, list(beta = c(0,0), logsigma = log(sigma)), silent = TRUE)
+obj <- MakeADFun(pred_func, list(beta = c(0,0), logsigma = 0), silent = TRUE)
 fit <- nlminb(obj$par, obj$fn, obj$gr)
 intervals <- t(obj$report()$pred_intervals)
 ```

@@ -305,7 +305,7 @@ x <- rnorm(50, 2, 5)
 negloglik <- \(theta){
   mu <- theta[1]
   sigma <- theta[2]
-  ll <- -sum(dnorm(x, mu, sigma, log = TRUE))
+  ll <- sum(dnorm(x, mu, sigma, log = TRUE))
   return(-ll)
 }
 ```
@@ -328,7 +328,7 @@ negloglik <- \(theta){
 negloglik <- \(theta){
   mu <- theta[1]
   sigma <- exp(theta[2])
-  ll <- -sum(dnorm(x, mu, sigma, log = TRUE))
+  ll <- sum(dnorm(x, mu, sigma, log = TRUE))
   return(-ll)
 }
 ```
@@ -343,7 +343,7 @@ library(RTMB)
 negloglik <- \(theta){
   getAll(theta)
   sigma <- exp(logsigma)
-  ll <- -sum(dnorm(x, mu, sigma, log = TRUE))
+  ll <- sum(dnorm(x, mu, sigma, log = TRUE))
   return(-ll)
 }
 
