@@ -92,9 +92,17 @@ negll <- function(pars){
   mu <- alpha[stock] - beta[stock]*spawners_scaled
   logRS <- OBS(logRS)
   
+  ## Option 1:
   ll <- sum(dnorm(re, 0, sigma_re, log = TRUE))
   ll <- ll + sum(dnorm(logRS, mu, sigma[stock], log = TRUE))
-  
+
+  ## Option 2:
+  # ll <- 0
+  # for( s in 1:nstocks ){
+  #   ll <- ll + dnorm(re[s], 0, sigma_re, log = TRUE)
+  #   ll <- ll + sum(dnorm(logRS[stock == s], mu[stock == s], sigma[s], log = TRUE))
+  # }
+    
   return(-ll)
 }
 
@@ -158,7 +166,7 @@ dnorm(0.5, 1, sqrt(0.5^2+0.25^2)) ## Known Marginal
 - If we make some assumptions that it is approximately Guassian,
 
 $$
-  f(x) \approx g(\widehat{x}) \sqrt{2\pi}\sigma N(\widehat{x}, \sigma^2),
+  f(x) \approx f(\widehat{x}) \sqrt{2\pi}\sigma N(\widehat{x}, \sigma^2),
 $$
 where $\widehat{x}$ is the mode of $x$, and $\sigma = \frac{1}{-\log(f(x))''_\widehat{x}}$, the second derivative evaluated at the mode. 
 
@@ -235,7 +243,7 @@ pois_gamma <- \(theta){
 }
 ## Manual Laplace
 nb_approx <- function(r, prob) {
-  mle <- optimize(\(u){pois_gamma(c(u, r, prob))}, 0, lower = 0, upper = 100)
+  mle <- optimize(\(u){pois_gamma(c(u, r, prob))}, 0, lower = -100, upper = 100)
   u_hat <- mle$minimum
   H <- pracma::hessian(\(u){pois_gamma(c(u, r, prob))}, u_hat)
   mle$objective - 0.5 * log(2 * pi) + 0.5 * log(drop(H))
@@ -243,7 +251,7 @@ nb_approx <- function(r, prob) {
 
 nb_approx(3, 0.25)
 
-F <- MakeTape(pois_gamma, c(0,0, 0))
+F <- MakeTape(pois_gamma, c(0, 0, 0))
 nb_approxc <- F$laplace(1)
 nb_approxc(c(3, 0.25))
 -dnbinom(obs, 3, 0.25, log = TRUE)
@@ -445,7 +453,7 @@ negll_autoreg <- function(pars){
   sigma_re <- exp(logsigma_re)
   sigma_time <- exp(logsigma_time)
   phi <- 2*plogis(logitphi)-1
-
+  
   alpha_stock <- re + alpha0
   ADREPORT(alpha_stock)
   
@@ -516,7 +524,7 @@ negll_gmrf <- function(pars){
   Q[cbind(2:nyears,1:(nyears-1))] <- -phi
   Q[cbind(1:(nyears-1), 2:nyears)] <- -phi
   Q <- Q/(sigma_time^2)
-  ll <- ll + dgmrf(re_time, Q=Q, log=TRUE)
+  ll <- dgmrf(re_time, Q=Q, log=TRUE)
 
   ll <- ll + sum(dnorm(re, 0, sigma_re, log = TRUE))
   ll <- ll + sum(dnorm(logRS, mu, sigma[stock], log = TRUE))

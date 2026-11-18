@@ -119,6 +119,7 @@ pred_func <- function(pars) {
 
   ## Prediction Interval via simulation
   if (!RTMB:::ad_context()) {
+    cat("I'm simulating right now! \n")
     sim_matrix <- replicate(10000, rnorm(length(mu), mean = mu, sd = sigma))
     pred_intervals <- apply(sim_matrix, 1, quantile, probs = c(0.025, 0.975)) 
     REPORT(mu)

@@ -154,7 +154,8 @@ sigma <- exp(pList$logsigma)
 
 ## Covariance between stocks
 Sigma_latent <- Lambda %*% t(Lambda) + diag(sigma^2)
-stock_names <- sox %>% select(stock, PopName, MU) %>% distinct() %>% arrange(stock)
+stock_names <- sox %>% select(stock, PopName, MU) %>% 
+  distinct() %>% arrange(stock)
 colnames(Sigma_latent) <- stock_names$PopName
 rownames(Sigma_latent) <- stock_names$PopName
 
